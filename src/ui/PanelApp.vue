@@ -1,215 +1,196 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
-const status = ref<string>('')
-const selected = ref<string>('none')
-const prop = ref<string>('background')
-const value = ref<string>('#ff0')
-const exported = ref<string>('')
-const computed = ref<Record<string, string>>({})
-const presets = [
-  { label: 'Padding 8px', prop: 'padding', value: '8px' },
-  { label: 'Padding 16px', prop: 'padding', value: '16px' },
-  { label: 'Margin 16px', prop: 'margin', value: '16px' },
-  { label: 'Center text', prop: 'text-align', value: 'center' },
-  { label: 'Rounded 12px', prop: 'border-radius', value: '12px' },
-  { label: 'Outline red', prop: 'outline', value: '2px solid red' },
-]
+const isPaused = ref(false)
+const isPicking = ref(false)
 
-const startPick = () => window.parent.postMessage({ type: 'QWIKCSS_START_PICK' }, '*')
-const stopPick = () => window.parent.postMessage({ type: 'QWIKCSS_STOP_PICK' }, '*')
-const close = () => window.parent.postMessage({ type: 'QWIKCSS_CLOSE' }, '*')
-
-const apply = () =>
-  window.parent.postMessage({ type: 'QWIKCSS_APPLY', prop: prop.value, value: value.value }, '*')
-
-const remove = () => window.parent.postMessage({ type: 'QWIKCSS_REMOVE', prop: prop.value }, '*')
-
-const doExport = () => window.parent.postMessage({ type: 'QWIKCSS_EXPORT' }, '*')
-const clearSite = () => window.parent.postMessage({ type: 'QWIKCSS_CLEAR_SITE' }, '*')
-
-const useRow = (k: string, v: string) => {
-  prop.value = k
-  value.value = v
+const stopPick = () => {
+  isPicking.value = false
+  isPaused.value = false
+  window.parent.postMessage({ type: 'QWIKCSS_STOP_PICK' }, '*')
 }
-const applyPreset = (p: { prop: string; value: string }) => {
-  prop.value = p.prop
-  value.value = p.value
-  apply()
+
+const togglePause = () => {
+  if (!isPicking.value) return
+  const next = !isPaused.value
+  isPaused.value = next
+  window.parent.postMessage(
+    { type: next ? 'QWIKCSS_PAUSE_INSPECT' : 'QWIKCSS_RESUME_INSPECT' },
+    '*'
+  )
 }
 
 const onMsg = (e: MessageEvent) => {
-  if (e?.data?.type === 'QWIKCSS_EXPORT_RESULT') {
-    exported.value = e.data.css || ''
-  }
-
-  if (e?.data?.type === 'QWIKCSS_LOADED') status.value = 'Loaded saved styles for this site'
-  if (e?.data?.type === 'QWIKCSS_SAVED') status.value = 'Saved'
-  if (e?.data?.type === 'QWIKCSS_CLEARED') status.value = 'Cleared'
-  if (e?.data?.type === 'QWIKCSS_SAVE_ERROR') status.value = `Save error: ${e.data.message}`
-  if (e?.data?.type === 'QWIKCSS_SELECTED') {
-    selected.value = e.data.selector || 'none'
-    exported.value = ''
-    computed.value = {}
-  }
-
-  if (e?.data?.type === 'QWIKCSS_INSPECT') {
-    if (e.data.selector) selected.value = e.data.selector
-    computed.value = e.data.computed || {}
+  if (e?.data?.type === 'QWIKCSS_STATE') {
+    if (typeof e.data.paused === 'boolean') isPaused.value = e.data.paused
+    if (typeof e.data.picking === 'boolean') isPicking.value = e.data.picking
   }
 }
 
-onMounted(() => window.addEventListener('message', onMsg))
+onMounted(() => {
+  window.addEventListener('message', onMsg)
+  window.parent.postMessage({ type: 'QWIKCSS_START_PICK' }, '*')
+  window.parent.postMessage({ type: 'QWIKCSS_GET_STATE' }, '*')
+  isPicking.value = true
+  isPaused.value = false
+})
+
 onBeforeUnmount(() => window.removeEventListener('message', onMsg))
 </script>
 
 <template>
   <div class="wrap">
-    <div class="bar">
-      <strong>QwikCSS</strong>
-      <div class="actions">
-        <button @click="startPick">Pick</button>
-        <button @click="stopPick">Stop</button>
-        <button @click="close">Close</button>
-        <button @click="clearSite">Clear</button>
-      </div>
-    </div>
+    <div class="dock" role="toolbar" aria-label="Inspector controls">
+      <button
+        class="iconBtn"
+        type="button"
+        :aria-pressed="isPaused"
+        :title="isPaused ? 'Resume inspector' : 'Pause inspector'"
+        :disabled="!isPicking"
+        @click="togglePause"
+      >
+        <svg v-if="!isPaused" class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+          <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+        </svg>
+        <svg v-else class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 5 L19 12 L8 19 Z"></path>
+        </svg>
+      </button>
 
-    <div class="body">
-      <div v-if="status"><b>Status:</b> {{ status }}</div>
+      <div class="divider" aria-hidden="true"></div>
 
-      <div><b>Selected:</b> {{ selected }}</div>
-      <div class="section">
-        <div class="sectionTitle">Presets</div>
-        <div class="chips">
-          <button v-for="p in presets" :key="p.label" @click="applyPreset(p)">
-            {{ p.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="sectionTitle">Inspector (computed)</div>
-
-        <div v-if="Object.keys(computed).length === 0" class="muted">
-          Pick an element to see computed styles.
-        </div>
-
-        <div v-else class="grid">
-          <div
-            v-for="(v, k) in computed"
-            :key="k"
-            class="rowItem"
-            @click="useRow(String(k), String(v))"
-            title="Click to fill inputs"
-          >
-            <div class="k">{{ k }}</div>
-            <div class="v">{{ v }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row">
-        <input class="inp" v-model="prop" placeholder="property (e.g. margin-top)" />
-        <input class="inp" v-model="value" placeholder="value (e.g. 12px)" />
-        <button @click="apply">Apply</button>
-        <button @click="remove">Remove</button>
-        <button @click="doExport">Export</button>
-      </div>
-
-      <textarea v-if="exported" class="out" readonly :value="exported"></textarea>
+      <button class="iconBtn stop" type="button" title="Stop inspector" @click="stopPick">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+        </svg>
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
+:global(body) {
+  margin: 0;
+  background: transparent;
+}
+
+:global(#app) {
+  height: 100%;
+}
+
 .wrap {
-  font-family: system-ui, sans-serif;
-  height: 100vh;
-}
-.bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid #ddd;
-}
-.actions {
-  display: flex;
-  gap: 8px;
-}
-.body {
-  padding: 12px;
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.inp {
-  padding: 6px 8px;
-  min-width: 220px;
-}
-button {
-  padding: 6px 10px;
-}
-.out {
-  width: 100%;
-  height: 120px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-}
-
-.section {
-  margin-top: 6px;
-}
-.sectionTitle {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.muted {
-  opacity: 0.7;
-  font-size: 13px;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.chips button {
-  padding: 6px 10px;
-}
-
-.grid {
+  min-height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 10px;
+  place-items: center;
+  color: #e9edf2;
+  font-family: 'Space Grotesk', 'Manrope', 'Avenir Next', sans-serif;
+  background:
+    radial-gradient(700px 180px at 50% -20%, rgba(60, 160, 255, 0.18), transparent 60%),
+    radial-gradient(560px 160px at 50% 120%, rgba(84, 255, 141, 0.16), transparent 60%),
+    linear-gradient(180deg, #0c0e12 0%, #0a0b0d 100%);
 }
 
-.rowItem {
+.dock {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 10px;
-  padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(24, 26, 30, 0.95), rgba(14, 15, 18, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  animation: dock-in 240ms ease-out;
 }
 
-.k {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  opacity: 0.85;
+.divider {
+  width: 1px;
+  height: 22px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.3), transparent);
 }
-.v {
-  text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+
+.iconBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f3f5f7;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.iconBtn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.iconBtn:focus-visible {
+  outline: 2px solid rgba(84, 255, 141, 0.6);
+  outline-offset: 2px;
+}
+
+.iconBtn[aria-pressed='true'] {
+  color: #7cffad;
+  border-color: rgba(124, 255, 173, 0.5);
+  background: rgba(124, 255, 173, 0.14);
+}
+
+.iconBtn.stop {
+  color: #ff8f8f;
+  border-color: rgba(255, 143, 143, 0.4);
+}
+
+.iconBtn.stop:hover {
+  background: rgba(255, 143, 143, 0.16);
+}
+
+.iconBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 540px) {
+  .dock {
+    padding: 8px 12px;
+  }
+  .iconBtn {
+    width: 36px;
+    height: 36px;
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
 }
 </style>

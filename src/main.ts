@@ -3,15 +3,17 @@
 const CONTAINER_ID = '__qwikcss_root__'
 const IFRAME_ID = '__qwikcss_iframe__'
 const PANEL_HEIGHT = 280
-const patch: Record<string, Record<string, string>> = {}
 
 const OVERLAY_ID = '__qwikcss_overlay__'
 const LABEL_ID = '__qwikcss_label__'
+
 const STYLE_ID = '__qwikcss_style__'
 const STORAGE_KEY = `qwikcss:${location.host}`
+
 const TOOLBAR_ID = '__qwikcss_toolbar__'
 const CARD_ID = '__qwikcss_hovercard__'
 const CARD_HANDLE_ID = '__qwikcss_hovercard_handle__'
+const RESET_STYLE_ID = '__qwikcss_reset__'
 
 const INSPECT_PROPS = [
   'display',
@@ -35,18 +37,24 @@ const INSPECT_PROPS = [
   'box-shadow',
 ] as const
 
+// selector -> { prop -> value }
+const patch: Record<string, Record<string, string>> = {}
+
 let picking = false
-let lastHover: Element | null = null
-let currentSelector: string | null = null
-let saveTimer: number | null = null
-let currentElement: Element | null = null
-let inspectActive = false
 let inspectPaused = false
+let lastHover: Element | null = null
+
+let currentSelector: string | null = null
+let currentElement: Element | null = null
+
+let saveTimer: number | null = null
 
 let cardPinned = false
 let dragging = false
 let dragOffsetX = 0
 let dragOffsetY = 0
+
+let toolbarPauseBtn: HTMLButtonElement | null = null
 
 /** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
@@ -80,8 +88,29 @@ function mountPanel() {
 function unmountPanel() {
   stopPicking()
   window.removeEventListener('message', onPanelMessage)
+
   document.getElementById(CONTAINER_ID)?.remove()
   removeOverlay()
+  hideCard()
+  unmountToolbar()
+
+  document.getElementById(CARD_ID)?.remove()
+  document.getElementById(RESET_STYLE_ID)?.remove()
+}
+
+function postToPanel(msg: any) {
+  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
+  iframe?.contentWindow?.postMessage(msg, '*')
+}
+
+function notifyState() {
+  postToPanel({ type: 'QWIKCSS_STATE', paused: inspectPaused, picking })
+}
+
+function setPaused(paused: boolean) {
+  inspectPaused = paused
+  if (!paused) cardPinned = false
+  if (toolbarPauseBtn) toolbarPauseBtn.textContent = paused ? 'Resume Inspect' : 'Pause Inspect'
 }
 
 function onPanelMessage(e: MessageEvent) {
@@ -90,6 +119,15 @@ function onPanelMessage(e: MessageEvent) {
   if (t === 'QWIKCSS_CLOSE') unmountPanel()
   if (t === 'QWIKCSS_START_PICK') startPicking()
   if (t === 'QWIKCSS_STOP_PICK') stopPicking()
+  if (t === 'QWIKCSS_PAUSE_INSPECT') {
+    setPaused(true)
+    notifyState()
+  }
+  if (t === 'QWIKCSS_RESUME_INSPECT') {
+    setPaused(false)
+    notifyState()
+  }
+  if (t === 'QWIKCSS_GET_STATE') notifyState()
 
   if (t === 'QWIKCSS_APPLY') {
     if (!currentSelector) return
@@ -108,12 +146,13 @@ function onPanelMessage(e: MessageEvent) {
 
   if (t === 'QWIKCSS_EXPORT') {
     const css = exportCSS()
-    const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
-    iframe?.contentWindow?.postMessage({ type: 'QWIKCSS_EXPORT_RESULT', css }, '*')
+    postToPanel({ type: 'QWIKCSS_EXPORT_RESULT', css })
   }
 
   if (t === 'QWIKCSS_CLEAR_SITE') {
     for (const k of Object.keys(patch)) delete patch[k]
+    currentElement = null
+    currentSelector = null
     rebuildCSS()
     chrome.storage.local.remove(STORAGE_KEY)
     postToPanel({ type: 'QWIKCSS_CLEARED' })
@@ -167,9 +206,7 @@ function hideOverlay() {
 
 function isInsideQwikCSSUI(el: Element) {
   return (
-    // Anything inside our injected UIs
     !!el.closest?.(`#${CONTAINER_ID}, #${TOOLBAR_ID}, #${CARD_ID}`) ||
-    // Or the UI roots themselves
     el.id === CONTAINER_ID ||
     el.id === TOOLBAR_ID ||
     el.id === CARD_ID ||
@@ -227,10 +264,7 @@ function onMouseMove(ev: MouseEvent) {
   if (inspectPaused) return
 
   const raw = document.elementFromPoint(ev.clientX, ev.clientY)
-  if (raw && isInsideQwikCSSUI(raw)) {
-    // Don’t update hover target while interacting with QwikCSS UI
-    return
-  }
+  if (raw && isInsideQwikCSSUI(raw)) return
 
   const el = getElementFromPoint(ev.clientX, ev.clientY)
   if (!el) {
@@ -247,8 +281,72 @@ function onMouseMove(ev: MouseEvent) {
   }
 }
 
+function onClick(ev: MouseEvent) {
+  if (!picking) return
+  const target = ev.target
+  if (target instanceof Element && isInsideQwikCSSUI(target)) return
+  if (inspectPaused) return
+
+  ev.preventDefault()
+  ev.stopPropagation()
+
+  const el = getElementFromPoint(ev.clientX, ev.clientY)
+  if (!el) return
+
+  const selector = buildSelector(el)
+
+  currentSelector = selector
+  currentElement = el
+  sendInspector()
+
+  postToPanel({
+    type: 'QWIKCSS_SELECTED',
+    selector,
+    tag: el.tagName.toLowerCase(),
+    id: (el as HTMLElement).id || null,
+    className: (el as HTMLElement).className || null,
+  })
+
+  // Pin card on clicked element and pause hover until user resumes via X/toolbar
+  cardPinned = true
+  setPaused(true)
+  notifyState()
+
+  updateHoverCard(el)
+  positionOverlay(el)
+}
+
+function startPicking() {
+  if (picking) return
+  picking = true
+  setPaused(false)
+
+  ensureOverlay()
+  ensureHoverCard()
+  mountToolbar()
+
+  document.addEventListener('mousemove', onMouseMove, true)
+  document.addEventListener('click', onClick, true)
+  notifyState()
+}
+
+function stopPicking() {
+  if (!picking) return
+  picking = false
+  setPaused(false)
+  lastHover = null
+
+  hideOverlay()
+  hideCard()
+  unmountToolbar()
+
+  document.removeEventListener('mousemove', onMouseMove, true)
+  document.removeEventListener('click', onClick, true)
+  notifyState()
+}
+
+/** ---------------- Selector generator ---------------- */
 function cssEscapeIdent(v: string) {
-  // Minimal safe escape (good enough for ids/classes most of the time)
   return v.replace(/([ !"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~])/g, '\\$1')
 }
 
@@ -270,14 +368,12 @@ function isUniqueSelector(sel: string) {
 }
 
 function buildSelector(el: Element) {
-  // 1) id
   const id = (el as HTMLElement).id
   if (id) {
     const s = `#${cssEscapeIdent(id)}`
     if (isUniqueSelector(s)) return s
   }
 
-  // 2) stable attributes
   const attrSel = getAttrSelector(el)
   if (attrSel) {
     const s = `${el.tagName.toLowerCase()}${attrSel}`
@@ -285,7 +381,6 @@ function buildSelector(el: Element) {
     if (isUniqueSelector(attrSel)) return attrSel
   }
 
-  // 3) build path upwards with classes / nth-of-type until unique
   const parts: string[] = []
   let cur: Element | null = el
 
@@ -307,7 +402,6 @@ function buildSelector(el: Element) {
 
     let part = tag + classList.join('')
 
-    // If still not unique at this level, add nth-of-type
     const parent = cur.parentElement
     if (parent) {
       const siblingsSameTag = Array.from(parent.children).filter((c) => c.tagName === cur!.tagName)
@@ -324,76 +418,10 @@ function buildSelector(el: Element) {
     cur = cur.parentElement
   }
 
-  // fallback (not guaranteed unique)
   return parts.join(' > ') || el.tagName.toLowerCase()
 }
 
-function onClick(ev: MouseEvent) {
-  if (!picking) return
-
-  // block site interactions during pick
-  ev.preventDefault()
-  ev.stopPropagation()
-
-  const el = getElementFromPoint(ev.clientX, ev.clientY)
-  if (!el) return
-
-  const selector = buildSelector(el)
-  currentSelector = selector
-  currentElement = el
-  sendInspector()
-
-  const payload = {
-    type: 'QWIKCSS_SELECTED',
-    selector,
-    tag: el.tagName.toLowerCase(),
-    id: (el as HTMLElement).id || null,
-    className: (el as HTMLElement).className || null,
-  }
-
-  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
-  iframe?.contentWindow?.postMessage(payload, '*')
-
-  // Keep inspect running.
-  // Freeze the popup on the clicked element (pin), but keep hover optional.
-  currentElement = el
-  currentSelector = selector
-  cardPinned = true
-  inspectPaused = true // optional: click freezes until user resumes
-  updateHoverCard(el)
-  positionOverlay(el)
-}
-
-function startPicking() {
-  if (picking) return
-  picking = true
-  inspectActive = true
-  inspectPaused = false
-  cardPinned = false
-
-  ensureOverlay()
-  ensureHoverCard()
-  mountToolbar()
-
-  document.addEventListener('mousemove', onMouseMove, true)
-  document.addEventListener('click', onClick, true)
-}
-
-function stopPicking() {
-  if (!picking) return
-  picking = false
-  inspectActive = false
-  inspectPaused = false
-  lastHover = null
-
-  hideOverlay()
-  hideCard()
-  unmountToolbar()
-
-  document.removeEventListener('mousemove', onMouseMove, true)
-  document.removeEventListener('click', onClick, true)
-}
-
+/** ---------------- CSS injection + persistence ---------------- */
 function ensureStyleTag() {
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null
   if (!style) {
@@ -433,18 +461,12 @@ function removeDecl(selector: string, prop: string) {
 }
 
 function exportCSS() {
-  // return exactly what we injected
   const rules: string[] = []
   for (const [selector, decls] of Object.entries(patch)) {
     const lines = Object.entries(decls).map(([k, v]) => `  ${k}: ${v} !important;`)
     if (lines.length) rules.push(`${selector} {\n${lines.join('\n')}\n}`)
   }
   return rules.join('\n\n')
-}
-
-function postToPanel(msg: any) {
-  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
-  iframe?.contentWindow?.postMessage(msg, '*')
 }
 
 function scheduleSave() {
@@ -459,24 +481,9 @@ function scheduleSave() {
   }, 200)
 }
 
-async function loadPatchFromStorage() {
-  try {
-    const res = await chrome.storage.local.get(STORAGE_KEY)
-    const saved = res?.[STORAGE_KEY]
-    if (saved && typeof saved === 'object') {
-      // replace existing patch contents
-      for (const k of Object.keys(patch)) delete patch[k]
-      Object.assign(patch, saved)
-      rebuildCSS()
-      postToPanel({ type: 'QWIKCSS_LOADED' })
-    }
-  } catch (err) {
-    postToPanel({ type: 'QWIKCSS_SAVE_ERROR', message: String(err) })
-  }
-}
-
+/** ---------------- Inspector (computed) ---------------- */
 function getComputedSnapshot(el: Element) {
-  const cs = getComputedStyle(el as Element)
+  const cs = getComputedStyle(el)
   const out: Record<string, string> = {}
   for (const p of INSPECT_PROPS) out[p] = cs.getPropertyValue(p).trim()
   return out
@@ -484,14 +491,14 @@ function getComputedSnapshot(el: Element) {
 
 function sendInspector() {
   if (!currentElement || !currentSelector) return
-  const computed = getComputedSnapshot(currentElement)
   postToPanel({
     type: 'QWIKCSS_INSPECT',
     selector: currentSelector,
-    computed,
+    computed: getComputedSnapshot(currentElement),
   })
 }
 
+/** ---------------- Toolbar + hover card ---------------- */
 function mountToolbar() {
   if (document.getElementById(TOOLBAR_ID)) return
 
@@ -513,7 +520,7 @@ function mountToolbar() {
   bar.style.userSelect = 'none'
 
   const btn = document.createElement('button')
-  btn.textContent = 'Pause Inspect'
+  btn.textContent = inspectPaused ? 'Resume Inspect' : 'Pause Inspect'
   btn.style.padding = '6px 10px'
   btn.style.borderRadius = '999px'
   btn.style.border = '1px solid rgba(255,255,255,0.18)'
@@ -521,12 +528,10 @@ function mountToolbar() {
   btn.style.color = 'inherit'
   btn.style.cursor = 'pointer'
   btn.onclick = () => {
-    inspectPaused = !inspectPaused
-    btn.textContent = inspectPaused ? 'Resume Inspect' : 'Pause Inspect'
-    if (!inspectPaused) {
-      cardPinned = false
-    }
+    setPaused(!inspectPaused)
+    notifyState()
   }
+  toolbarPauseBtn = btn
 
   const pin = document.createElement('button')
   pin.textContent = 'Pin'
@@ -548,10 +553,30 @@ function mountToolbar() {
 
 function unmountToolbar() {
   document.getElementById(TOOLBAR_ID)?.remove()
+  toolbarPauseBtn = null
+}
+
+function ensureQwikCSSResetStyle() {
+  if (document.getElementById(RESET_STYLE_ID)) return
+  const s = document.createElement('style')
+  s.id = RESET_STYLE_ID
+  s.textContent = `
+    #${CARD_ID}, #${CARD_ID} * {
+      outline: none !important;
+      box-shadow: none;
+    }
+    #${CARD_ID} {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  `
+  document.documentElement.appendChild(s)
 }
 
 function ensureHoverCard() {
   if (document.getElementById(CARD_ID)) return
+
+  ensureQwikCSSResetStyle()
 
   const card = document.createElement('div')
   card.id = CARD_ID
@@ -576,6 +601,11 @@ function ensureHoverCard() {
   handle.style.cursor = 'move'
   handle.style.borderBottom = '1px solid rgba(255,255,255,0.10)'
 
+  const left = document.createElement('div')
+  left.style.display = 'flex'
+  left.style.alignItems = 'center'
+  left.style.gap = '10px'
+
   const title = document.createElement('div')
   title.style.fontWeight = '700'
   title.textContent = 'Inspect'
@@ -584,8 +614,44 @@ function ensureHoverCard() {
   hint.style.opacity = '0.7'
   hint.textContent = 'drag'
 
-  handle.appendChild(title)
-  handle.appendChild(hint)
+  left.appendChild(title)
+  left.appendChild(hint)
+
+  const right = document.createElement('div')
+  right.style.display = 'flex'
+  right.style.alignItems = 'center'
+  right.style.gap = '8px'
+
+  const closeBtn = document.createElement('button')
+  closeBtn.textContent = '×'
+  closeBtn.setAttribute('type', 'button')
+  closeBtn.style.width = '26px'
+  closeBtn.style.height = '26px'
+  closeBtn.style.borderRadius = '8px'
+  closeBtn.style.border = '1px solid rgba(255,255,255,0.18)'
+  closeBtn.style.background = 'transparent'
+  closeBtn.style.color = 'white'
+  closeBtn.style.cursor = 'pointer'
+  closeBtn.style.lineHeight = '24px'
+  closeBtn.style.fontSize = '16px'
+  closeBtn.style.padding = '0'
+  closeBtn.title = 'Resume inspect'
+
+  closeBtn.addEventListener('mousedown', (ev) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+  })
+  closeBtn.addEventListener('click', (ev) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    setPaused(false)
+    notifyState()
+  })
+
+  right.appendChild(closeBtn)
+
+  handle.appendChild(left)
+  handle.appendChild(right)
 
   const body = document.createElement('div')
   body.style.padding = '10px 12px'
@@ -594,15 +660,14 @@ function ensureHoverCard() {
     <div style="opacity:.85;margin-bottom:8px" id="__qwikcss_card_line2__">—</div>
     <div style="opacity:.85" id="__qwikcss_card_line3__">—</div>
   `
-  ensureQwikCSSResetStyle()
+
   card.appendChild(handle)
   card.appendChild(body)
   document.documentElement.appendChild(card)
 
-  // Drag logic
   handle.addEventListener('mousedown', (ev) => {
     dragging = true
-    cardPinned = true // dragging implies pin
+    cardPinned = true
     const rect = card.getBoundingClientRect()
     dragOffsetX = ev.clientX - rect.left
     dragOffsetY = ev.clientY - rect.top
@@ -614,9 +679,7 @@ function ensureHoverCard() {
     'mousemove',
     (ev) => {
       if (!dragging) return
-      const x = ev.clientX - dragOffsetX
-      const y = ev.clientY - dragOffsetY
-      setCardPos(x, y)
+      setCardPos(ev.clientX - dragOffsetX, ev.clientY - dragOffsetY)
     },
     true
   )
@@ -635,8 +698,10 @@ function setCardPos(x: number, y: number) {
   if (!card) return
   const w = card.offsetWidth || 260
   const h = card.offsetHeight || 120
+
   const px = Math.min(window.innerWidth - 10, Math.max(10, x))
   const py = Math.min(window.innerHeight - 10, Math.max(10, y))
+
   card.style.left = `${Math.min(px, window.innerWidth - w - 10)}px`
   card.style.top = `${Math.min(py, window.innerHeight - h - 10)}px`
 }
@@ -656,7 +721,7 @@ function updateHoverCard(el: Element) {
   showCard()
 
   const rect = el.getBoundingClientRect()
-  const cs = getComputedStyle(el as Element)
+  const cs = getComputedStyle(el)
 
   const tag = el.tagName.toLowerCase()
   const w = Math.round(rect.width)
@@ -673,37 +738,10 @@ function updateHoverCard(el: Element) {
   if (line2) line2.textContent = `font: ${fontFamily}  ${fontSize}`
   if (line3) line3.textContent = `pos: ${Math.round(rect.left)}, ${Math.round(rect.top)}`
 
-  // If not pinned by user, place it near hovered element (like CSS Pro)
   if (!cardPinned && !dragging) {
-    const pad = 10
-    const x = rect.right + pad
-    const y = rect.top
-    setCardPos(x, y)
+    setCardPos(rect.right + 10, rect.top)
   }
-}
-
-function ensureQwikCSSResetStyle() {
-  const id = '__qwikcss_reset__'
-  if (document.getElementById(id)) return
-  const s = document.createElement('style')
-  s.id = id
-  s.textContent = `
-    #${CARD_ID}, #${CARD_ID} * {
-      outline: none !important;
-      box-shadow: none;
-    }
-    #${CARD_HANDLE_ID}:focus, #${CARD_HANDLE_ID}:active {
-      outline: none !important;
-      box-shadow: none !important;
-    }
-    #${CARD_ID} {
-      -webkit-user-select: none;
-      user-select: none;
-    }
-  `
-  document.documentElement.appendChild(s)
 }
 
 /** Boot */
 mountPanel()
-loadPatchFromStorage()
