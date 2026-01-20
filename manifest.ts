@@ -2,7 +2,7 @@ import type { ManifestV3Export } from '@crxjs/vite-plugin'
 
 const manifest: ManifestV3Export = {
   manifest_version: 3,
-  name: 'CSS Pro Clone (MVP)',
+  name: 'QwikCSS',
   version: '0.0.1',
   permissions: ['storage'],
   host_permissions: ['<all_urls>'],
@@ -11,7 +11,7 @@ const manifest: ManifestV3Export = {
   content_scripts: [
     {
       matches: ['<all_urls>'],
-      js: ['src/content/main.ts'],
+      js: ['src/main.ts'],
       run_at: 'document_idle',
     },
   ],
