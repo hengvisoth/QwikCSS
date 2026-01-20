@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 
+const status = ref<string>('')
 const selected = ref<string>('none')
 const prop = ref<string>('background')
 const value = ref<string>('#ff0')
@@ -16,6 +17,7 @@ const apply = () =>
 const remove = () => window.parent.postMessage({ type: 'QWIKCSS_REMOVE', prop: prop.value }, '*')
 
 const doExport = () => window.parent.postMessage({ type: 'QWIKCSS_EXPORT' }, '*')
+const clearSite = () => window.parent.postMessage({ type: 'QWIKCSS_CLEAR_SITE' }, '*')
 
 const onMsg = (e: MessageEvent) => {
   if (e?.data?.type === 'QWIKCSS_SELECTED') {
@@ -25,6 +27,11 @@ const onMsg = (e: MessageEvent) => {
   if (e?.data?.type === 'QWIKCSS_EXPORT_RESULT') {
     exported.value = e.data.css || ''
   }
+
+  if (e?.data?.type === 'QWIKCSS_LOADED') status.value = 'Loaded saved styles for this site'
+  if (e?.data?.type === 'QWIKCSS_SAVED') status.value = 'Saved'
+  if (e?.data?.type === 'QWIKCSS_CLEARED') status.value = 'Cleared'
+  if (e?.data?.type === 'QWIKCSS_SAVE_ERROR') status.value = `Save error: ${e.data.message}`
 }
 
 onMounted(() => window.addEventListener('message', onMsg))
@@ -39,10 +46,13 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
         <button @click="startPick">Pick</button>
         <button @click="stopPick">Stop</button>
         <button @click="close">Close</button>
+        <button @click="clearSite">Clear</button>
       </div>
     </div>
 
     <div class="body">
+      <div v-if="status"><b>Status:</b> {{ status }}</div>
+
       <div><b>Selected:</b> {{ selected }}</div>
 
       <div class="row">

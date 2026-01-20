@@ -8,10 +8,12 @@ const patch: Record<string, Record<string, string>> = {}
 const OVERLAY_ID = '__qwikcss_overlay__'
 const LABEL_ID = '__qwikcss_label__'
 const STYLE_ID = '__qwikcss_style__'
+const STORAGE_KEY = `qwikcss:${location.host}`
 
 let picking = false
 let lastHover: Element | null = null
 let currentSelector: string | null = null
+let saveTimer: number | null = null
 
 /** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
@@ -75,6 +77,13 @@ function onPanelMessage(e: MessageEvent) {
     const css = exportCSS()
     const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
     iframe?.contentWindow?.postMessage({ type: 'QWIKCSS_EXPORT_RESULT', css }, '*')
+  }
+
+  if (t === 'QWIKCSS_CLEAR_SITE') {
+    for (const k of Object.keys(patch)) delete patch[k]
+    rebuildCSS()
+    chrome.storage.local.remove(STORAGE_KEY)
+    postToPanel({ type: 'QWIKCSS_CLEARED' })
   }
 }
 
@@ -334,6 +343,7 @@ function rebuildCSS() {
   }
 
   style.textContent = rules.join('\n\n')
+  scheduleSave()
 }
 
 function applyDecl(selector: string, prop: string, value: string) {
@@ -359,5 +369,39 @@ function exportCSS() {
   return rules.join('\n\n')
 }
 
+function postToPanel(msg: any) {
+  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
+  iframe?.contentWindow?.postMessage(msg, '*')
+}
+
+function scheduleSave() {
+  if (saveTimer) window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(async () => {
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEY]: patch })
+      postToPanel({ type: 'QWIKCSS_SAVED' })
+    } catch (err) {
+      postToPanel({ type: 'QWIKCSS_SAVE_ERROR', message: String(err) })
+    }
+  }, 200)
+}
+
+async function loadPatchFromStorage() {
+  try {
+    const res = await chrome.storage.local.get(STORAGE_KEY)
+    const saved = res?.[STORAGE_KEY]
+    if (saved && typeof saved === 'object') {
+      // replace existing patch contents
+      for (const k of Object.keys(patch)) delete patch[k]
+      Object.assign(patch, saved)
+      rebuildCSS()
+      postToPanel({ type: 'QWIKCSS_LOADED' })
+    }
+  } catch (err) {
+    postToPanel({ type: 'QWIKCSS_SAVE_ERROR', message: String(err) })
+  }
+}
+
 /** Boot */
 mountPanel()
+loadPatchFromStorage()
