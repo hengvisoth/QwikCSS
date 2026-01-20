@@ -3,12 +3,15 @@
 const CONTAINER_ID = '__qwikcss_root__'
 const IFRAME_ID = '__qwikcss_iframe__'
 const PANEL_HEIGHT = 280
+const patch: Record<string, Record<string, string>> = {}
 
 const OVERLAY_ID = '__qwikcss_overlay__'
 const LABEL_ID = '__qwikcss_label__'
+const STYLE_ID = '__qwikcss_style__'
 
 let picking = false
 let lastHover: Element | null = null
+let currentSelector: string | null = null
 
 /** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
@@ -48,9 +51,31 @@ function unmountPanel() {
 
 function onPanelMessage(e: MessageEvent) {
   const t = e?.data?.type
+
   if (t === 'QWIKCSS_CLOSE') unmountPanel()
   if (t === 'QWIKCSS_START_PICK') startPicking()
   if (t === 'QWIKCSS_STOP_PICK') stopPicking()
+
+  if (t === 'QWIKCSS_APPLY') {
+    if (!currentSelector) return
+    const prop = String(e.data.prop || '').trim()
+    const value = String(e.data.value || '').trim()
+    if (!prop || !value) return
+    applyDecl(currentSelector, prop, value)
+  }
+
+  if (t === 'QWIKCSS_REMOVE') {
+    if (!currentSelector) return
+    const prop = String(e.data.prop || '').trim()
+    if (!prop) return
+    removeDecl(currentSelector, prop)
+  }
+
+  if (t === 'QWIKCSS_EXPORT') {
+    const css = exportCSS()
+    const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
+    iframe?.contentWindow?.postMessage({ type: 'QWIKCSS_EXPORT_RESULT', css }, '*')
+  }
 }
 
 /** ---------------- Overlay (highlight box) ---------------- */
@@ -99,7 +124,12 @@ function hideOverlay() {
 }
 
 function isInsideQwikCSSUI(el: Element) {
-  return !!el.closest?.(`#${CONTAINER_ID}`) || el.id === CONTAINER_ID || el.id === OVERLAY_ID || el.id === LABEL_ID
+  return (
+    !!el.closest?.(`#${CONTAINER_ID}`) ||
+    el.id === CONTAINER_ID ||
+    el.id === OVERLAY_ID ||
+    el.id === LABEL_ID
+  )
 }
 
 function describeElement(el: Element) {
@@ -107,7 +137,10 @@ function describeElement(el: Element) {
   const id = (el as HTMLElement).id ? `#${(el as HTMLElement).id}` : ''
   const cls =
     (el as HTMLElement).classList && (el as HTMLElement).classList.length
-      ? '.' + Array.from((el as HTMLElement).classList).slice(0, 3).join('.')
+      ? '.' +
+        Array.from((el as HTMLElement).classList)
+          .slice(0, 3)
+          .join('.')
       : ''
   return `${tag}${id}${cls}`
 }
@@ -156,6 +189,87 @@ function onMouseMove(ev: MouseEvent) {
   }
 }
 
+function cssEscapeIdent(v: string) {
+  // Minimal safe escape (good enough for ids/classes most of the time)
+  return v.replace(/([ !"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~])/g, '\\$1')
+}
+
+function getAttrSelector(el: Element) {
+  const preferred = ['data-testid', 'data-test', 'data-cy', 'data-qa', 'aria-label', 'name']
+  for (const a of preferred) {
+    const val = el.getAttribute(a)
+    if (val && val.length <= 64) return `[${a}="${val.replace(/"/g, '\\"')}"]`
+  }
+  return null
+}
+
+function isUniqueSelector(sel: string) {
+  try {
+    return document.querySelectorAll(sel).length === 1
+  } catch {
+    return false
+  }
+}
+
+function buildSelector(el: Element) {
+  // 1) id
+  const id = (el as HTMLElement).id
+  if (id) {
+    const s = `#${cssEscapeIdent(id)}`
+    if (isUniqueSelector(s)) return s
+  }
+
+  // 2) stable attributes
+  const attrSel = getAttrSelector(el)
+  if (attrSel) {
+    const s = `${el.tagName.toLowerCase()}${attrSel}`
+    if (isUniqueSelector(s)) return s
+    if (isUniqueSelector(attrSel)) return attrSel
+  }
+
+  // 3) build path upwards with classes / nth-of-type until unique
+  const parts: string[] = []
+  let cur: Element | null = el
+
+  while (cur && cur !== document.documentElement && parts.length < 6) {
+    const tag = cur.tagName.toLowerCase()
+
+    const cid = (cur as HTMLElement).id
+    if (cid) {
+      parts.unshift(`${tag}#${cssEscapeIdent(cid)}`)
+      const s = parts.join(' > ')
+      if (isUniqueSelector(s)) return s
+      break
+    }
+
+    const classList = Array.from((cur as HTMLElement).classList || [])
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((c) => `.${cssEscapeIdent(c)}`)
+
+    let part = tag + classList.join('')
+
+    // If still not unique at this level, add nth-of-type
+    const parent = cur.parentElement
+    if (parent) {
+      const siblingsSameTag = Array.from(parent.children).filter((c) => c.tagName === cur!.tagName)
+      if (siblingsSameTag.length > 1) {
+        const idx = siblingsSameTag.indexOf(cur) + 1
+        part += `:nth-of-type(${idx})`
+      }
+    }
+
+    parts.unshift(part)
+    const selector = parts.join(' > ')
+    if (isUniqueSelector(selector)) return selector
+
+    cur = cur.parentElement
+  }
+
+  // fallback (not guaranteed unique)
+  return parts.join(' > ') || el.tagName.toLowerCase()
+}
+
 function onClick(ev: MouseEvent) {
   if (!picking) return
 
@@ -166,8 +280,12 @@ function onClick(ev: MouseEvent) {
   const el = getElementFromPoint(ev.clientX, ev.clientY)
   if (!el) return
 
+  const selector = buildSelector(el)
+  currentSelector = selector
+
   const payload = {
     type: 'QWIKCSS_SELECTED',
+    selector,
     tag: el.tagName.toLowerCase(),
     id: (el as HTMLElement).id || null,
     className: (el as HTMLElement).className || null,
@@ -194,6 +312,51 @@ function stopPicking() {
   hideOverlay()
   document.removeEventListener('mousemove', onMouseMove, true)
   document.removeEventListener('click', onClick, true)
+}
+
+function ensureStyleTag() {
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null
+  if (!style) {
+    style = document.createElement('style')
+    style.id = STYLE_ID
+    document.documentElement.appendChild(style)
+  }
+  return style
+}
+
+function rebuildCSS() {
+  const style = ensureStyleTag()
+  const rules: string[] = []
+
+  for (const [selector, decls] of Object.entries(patch)) {
+    const lines = Object.entries(decls).map(([k, v]) => `  ${k}: ${v} !important;`)
+    if (lines.length) rules.push(`${selector} {\n${lines.join('\n')}\n}`)
+  }
+
+  style.textContent = rules.join('\n\n')
+}
+
+function applyDecl(selector: string, prop: string, value: string) {
+  if (!patch[selector]) patch[selector] = {}
+  patch[selector][prop] = value
+  rebuildCSS()
+}
+
+function removeDecl(selector: string, prop: string) {
+  if (!patch[selector]) return
+  delete patch[selector][prop]
+  if (Object.keys(patch[selector]).length === 0) delete patch[selector]
+  rebuildCSS()
+}
+
+function exportCSS() {
+  // return exactly what we injected
+  const rules: string[] = []
+  for (const [selector, decls] of Object.entries(patch)) {
+    const lines = Object.entries(decls).map(([k, v]) => `  ${k}: ${v} !important;`)
+    if (lines.length) rules.push(`${selector} {\n${lines.join('\n')}\n}`)
+  }
+  return rules.join('\n\n')
 }
 
 /** Boot */
