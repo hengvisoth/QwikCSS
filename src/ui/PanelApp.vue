@@ -4,10 +4,21 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 const isPaused = ref(false)
 const isPicking = ref(false)
 
+const startPick = () => {
+  isPicking.value = true
+  isPaused.value = false
+  window.parent.postMessage({ type: 'QWIKCSS_START_PICK' }, '*')
+}
+
 const stopPick = () => {
   isPicking.value = false
   isPaused.value = false
   window.parent.postMessage({ type: 'QWIKCSS_STOP_PICK' }, '*')
+}
+
+const togglePick = () => {
+  if (isPicking.value) stopPick()
+  else startPick()
 }
 
 const togglePause = () => {
@@ -60,9 +71,17 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
 
       <div class="divider" aria-hidden="true"></div>
 
-      <button class="iconBtn stop" type="button" title="Stop inspector" @click="stopPick">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+      <button
+        class="iconBtn stop"
+        type="button"
+        :title="isPicking ? 'Stop inspector' : 'Start inspector'"
+        @click="togglePick"
+      >
+        <svg v-if="isPicking" class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+        </svg>
+        <svg v-else class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="5"></circle>
         </svg>
       </button>
     </div>

@@ -79,10 +79,10 @@ function mountPanel() {
   container.id = CONTAINER_ID
   container.style.position = 'fixed'
   container.style.left = '50%'
-  container.style.top = `${PANEL_MARGIN}px`
+  container.style.bottom = `${PANEL_MARGIN}px`
   container.style.transform = 'translateX(-50%)'
   container.style.right = 'auto'
-  container.style.bottom = 'auto'
+  container.style.top = 'auto'
   container.style.height = `${PANEL_HEIGHT}px`
   container.style.width = `${PANEL_WIDTH}px`
   container.style.zIndex = '2147483647'
