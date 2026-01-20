@@ -80,15 +80,11 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
 }
 
 .wrap {
-  min-height: 100vh;
+  min-height: 30vh;
+  background: transparent;
   display: grid;
   place-items: center;
-  color: #e9edf2;
   font-family: 'Space Grotesk', 'Manrope', 'Avenir Next', sans-serif;
-  background:
-    radial-gradient(700px 180px at 50% -20%, rgba(60, 160, 255, 0.18), transparent 60%),
-    radial-gradient(560px 160px at 50% 120%, rgba(84, 255, 141, 0.16), transparent 60%),
-    linear-gradient(180deg, #0c0e12 0%, #0a0b0d 100%);
 }
 
 .dock {
