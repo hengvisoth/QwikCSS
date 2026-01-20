@@ -1,59 +1,69 @@
-[Project Name] 🎨
-[Project Name] is a powerful, open-source browser extension that lets you visually edit any website's CSS in real-time. Think of it as a faster, more intuitive alternative to browser DevTools.
+# QwikCSS 🎨
 
-✨ Features
-Visual Editing: Change colors, fonts, margins, and layouts without writing code.
+**Visually edit any website's CSS in real-time.**
+<br>
+*A faster, more intuitive alternative to browser DevTools.*
 
-Automatic Code Generation: Get clean, production-ready CSS for every change you make.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-Deep Inspector: Hover over any element to see its styles, assets, and dimensions instantly.
+</div>
 
-Open Source: Built by the community, for the community.
+---
 
-🚀 Getting Started
-Installation
-Clone the repository:
+## ✨ Features
 
-Bash
+- **Visual Editing**: Change colors, fonts, margins, and layouts without writing code.
+- **Automatic Code Generation**: Get clean, production-ready CSS for every change you make.
+- **Deep Inspector**: Hover over any element to see its styles, assets, and dimensions instantly.
+- **Open Source**: Built by the community, for the community.
 
-git clone https://github.com/yourusername/project-name.git
-Install dependencies:
+## 🚀 Getting Started
 
-Bash
+### Installation
 
-npm install
-Build the project:
+1. **Clone the repository**
 
-Bash
+   ```bash
+   git clone https://github.com/yourusername/project-name.git
+   ```
 
-npm run build
-Load the extension in your browser:
+2. **Install dependencies**
 
-Open Chrome/Edge and go to chrome://extensions.
+   ```bash
+   npm install
+   ```
 
-Enable Developer mode.
+3. **Build the project**
 
-Click Load unpacked and select the dist folder.
+   ```bash
+   npm run build
+   ```
 
-🛠 Tech Stack
-Logic: JavaScript / TypeScript
+4. **Load the extension in your browser**
 
-UI: Vue.js / Tailwind CSS
+   - Open Chrome/Edge and go to `chrome://extensions`.
+   - Enable **Developer mode**.
+   - Click **Load unpacked** and select the `dist` folder.
 
-Manifest: Web Extensions API (V3)
+## 🛠 Tech Stack
 
-🤝 Contributing
+| Category | Technology |
+|----------|------------|
+| **Logic** | JavaScript / TypeScript |
+| **UI** | Vue.js / Tailwind CSS |
+| **Manifest** | Web Extensions API (V3) |
+
+## 🤝 Contributing
+
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-Fork the Project
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-Create your Feature Branch (git checkout -b feature/AmazingFeature)
+## 📄 License
 
-Commit your Changes (git commit -m 'Add some AmazingFeature')
-
-Push to the Branch (git push origin feature/AmazingFeature)
-
-Open a Pull Request
-
-📄 License
-Distributed under the MIT License. See LICENSE for more information.
+Distributed under the MIT License. See `LICENSE` for more information.
