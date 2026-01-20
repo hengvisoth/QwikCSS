@@ -1,7 +1,16 @@
+// src/main.ts (content script)
+
 const CONTAINER_ID = '__qwikcss_root__'
 const IFRAME_ID = '__qwikcss_iframe__'
 const PANEL_HEIGHT = 280
 
+const OVERLAY_ID = '__qwikcss_overlay__'
+const LABEL_ID = '__qwikcss_label__'
+
+let picking = false
+let lastHover: Element | null = null
+
+/** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
   if (document.getElementById(CONTAINER_ID)) return
 
@@ -21,20 +30,171 @@ function mountPanel() {
   iframe.style.width = '100%'
   iframe.style.height = '100%'
   iframe.style.border = '0'
-  iframe.style.boxShadow = '0 -8px 24px rgba(0,0,0,0.15)'
   iframe.style.background = 'white'
+  iframe.style.boxShadow = '0 -8px 24px rgba(0,0,0,0.15)'
 
   container.appendChild(iframe)
   document.documentElement.appendChild(container)
+
+  window.addEventListener('message', onPanelMessage)
 }
 
 function unmountPanel() {
+  stopPicking()
+  window.removeEventListener('message', onPanelMessage)
   document.getElementById(CONTAINER_ID)?.remove()
+  removeOverlay()
 }
 
-// basic messaging from iframe -> page
-window.addEventListener('message', (e) => {
-if (e?.data?.type === 'QWIKCSS_CLOSE') unmountPanel()
-})
+function onPanelMessage(e: MessageEvent) {
+  const t = e?.data?.type
+  if (t === 'QWIKCSS_CLOSE') unmountPanel()
+  if (t === 'QWIKCSS_START_PICK') startPicking()
+  if (t === 'QWIKCSS_STOP_PICK') stopPicking()
+}
 
+/** ---------------- Overlay (highlight box) ---------------- */
+function ensureOverlay() {
+  if (document.getElementById(OVERLAY_ID)) return
+
+  const overlay = document.createElement('div')
+  overlay.id = OVERLAY_ID
+  overlay.style.position = 'fixed'
+  overlay.style.pointerEvents = 'none'
+  overlay.style.zIndex = '2147483647'
+  overlay.style.border = '2px solid #2b6cff'
+  overlay.style.background = 'rgba(43,108,255,0.12)'
+  overlay.style.display = 'none'
+
+  const label = document.createElement('div')
+  label.id = LABEL_ID
+  label.style.position = 'fixed'
+  label.style.pointerEvents = 'none'
+  label.style.zIndex = '2147483647'
+  label.style.padding = '4px 6px'
+  label.style.borderRadius = '6px'
+  label.style.background = 'rgba(0,0,0,0.8)'
+  label.style.color = 'white'
+  label.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial'
+  label.style.display = 'none'
+  label.style.maxWidth = '60vw'
+  label.style.whiteSpace = 'nowrap'
+  label.style.overflow = 'hidden'
+  label.style.textOverflow = 'ellipsis'
+
+  document.documentElement.appendChild(overlay)
+  document.documentElement.appendChild(label)
+}
+
+function removeOverlay() {
+  document.getElementById(OVERLAY_ID)?.remove()
+  document.getElementById(LABEL_ID)?.remove()
+}
+
+function hideOverlay() {
+  const overlay = document.getElementById(OVERLAY_ID) as HTMLDivElement | null
+  const label = document.getElementById(LABEL_ID) as HTMLDivElement | null
+  if (overlay) overlay.style.display = 'none'
+  if (label) label.style.display = 'none'
+}
+
+function isInsideQwikCSSUI(el: Element) {
+  return !!el.closest?.(`#${CONTAINER_ID}`) || el.id === CONTAINER_ID || el.id === OVERLAY_ID || el.id === LABEL_ID
+}
+
+function describeElement(el: Element) {
+  const tag = el.tagName.toLowerCase()
+  const id = (el as HTMLElement).id ? `#${(el as HTMLElement).id}` : ''
+  const cls =
+    (el as HTMLElement).classList && (el as HTMLElement).classList.length
+      ? '.' + Array.from((el as HTMLElement).classList).slice(0, 3).join('.')
+      : ''
+  return `${tag}${id}${cls}`
+}
+
+function positionOverlay(el: Element) {
+  const overlay = document.getElementById(OVERLAY_ID) as HTMLDivElement | null
+  const label = document.getElementById(LABEL_ID) as HTMLDivElement | null
+  if (!overlay || !label) return
+
+  const rect = el.getBoundingClientRect()
+
+  overlay.style.display = 'block'
+  overlay.style.left = `${Math.max(0, rect.left)}px`
+  overlay.style.top = `${Math.max(0, rect.top)}px`
+  overlay.style.width = `${Math.max(0, rect.width)}px`
+  overlay.style.height = `${Math.max(0, rect.height)}px`
+
+  label.style.display = 'block'
+  label.textContent = describeElement(el)
+
+  const lx = Math.min(window.innerWidth - 10, Math.max(10, rect.left))
+  const ly = Math.max(10, rect.top - 26)
+  label.style.left = `${lx}px`
+  label.style.top = `${ly}px`
+}
+
+function getElementFromPoint(x: number, y: number) {
+  const el = document.elementFromPoint(x, y)
+  if (!el) return null
+  if (isInsideQwikCSSUI(el)) return null
+  return el
+}
+
+/** ---------------- Picking logic ---------------- */
+function onMouseMove(ev: MouseEvent) {
+  if (!picking) return
+  const el = getElementFromPoint(ev.clientX, ev.clientY)
+  if (!el) {
+    lastHover = null
+    hideOverlay()
+    return
+  }
+  if (el !== lastHover) {
+    lastHover = el
+    positionOverlay(el)
+  }
+}
+
+function onClick(ev: MouseEvent) {
+  if (!picking) return
+
+  // block site interactions during pick
+  ev.preventDefault()
+  ev.stopPropagation()
+
+  const el = getElementFromPoint(ev.clientX, ev.clientY)
+  if (!el) return
+
+  const payload = {
+    type: 'QWIKCSS_SELECTED',
+    tag: el.tagName.toLowerCase(),
+    id: (el as HTMLElement).id || null,
+    className: (el as HTMLElement).className || null,
+  }
+
+  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
+  iframe?.contentWindow?.postMessage(payload, '*')
+
+  stopPicking()
+}
+
+function startPicking() {
+  if (picking) return
+  picking = true
+  ensureOverlay()
+  document.addEventListener('mousemove', onMouseMove, true)
+  document.addEventListener('click', onClick, true)
+}
+
+function stopPicking() {
+  if (!picking) return
+  picking = false
+  lastHover = null
+  hideOverlay()
+  document.removeEventListener('mousemove', onMouseMove, true)
+  document.removeEventListener('click', onClick, true)
+}
+
+/** Boot */
 mountPanel()
