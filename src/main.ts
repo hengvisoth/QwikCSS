@@ -760,12 +760,12 @@ function ensureQwikCSSResetStyle() {
     }
     #${CARD_ID} .qwikcss-card-prop .k {
       color: var(--card-accent);
-      font-size: 11px;
+      font-size: 14px;
       letter-spacing: 0.03em;
     }
     #${CARD_ID} .qwikcss-card-prop .v {
       color: rgba(231, 237, 245, 0.9);
-      font-size: 12px;
+      font-size: 14px;
       text-align: right;
       word-break: break-word;
       display: inline-flex;
@@ -927,7 +927,8 @@ function updateHoverCard(el: Element) {
     const path = getElementPath(el)
     crumbs.innerHTML = path
       .map((item, index) => {
-        const cls = index === path.length - 1 ? 'qwikcss-card-crumb is-current' : 'qwikcss-card-crumb'
+        const cls =
+          index === path.length - 1 ? 'qwikcss-card-crumb is-current' : 'qwikcss-card-crumb'
         const pad = index * 10
         return `<div class="${cls}" style="margin-left:${pad}px">${escapeHtml(item)}</div>`
       })
