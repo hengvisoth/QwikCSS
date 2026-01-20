@@ -376,7 +376,6 @@ function startPicking() {
 
   ensureOverlay()
   ensureHoverCard()
-  mountToolbar()
 
   document.addEventListener('mousemove', onMouseMove, true)
   document.addEventListener('click', onClick, true)
