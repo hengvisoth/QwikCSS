@@ -9,6 +9,9 @@ const OVERLAY_ID = '__qwikcss_overlay__'
 const LABEL_ID = '__qwikcss_label__'
 const STYLE_ID = '__qwikcss_style__'
 const STORAGE_KEY = `qwikcss:${location.host}`
+const TOOLBAR_ID = '__qwikcss_toolbar__'
+const CARD_ID = '__qwikcss_hovercard__'
+const CARD_HANDLE_ID = '__qwikcss_hovercard_handle__'
 
 const INSPECT_PROPS = [
   'display',
@@ -37,6 +40,13 @@ let lastHover: Element | null = null
 let currentSelector: string | null = null
 let saveTimer: number | null = null
 let currentElement: Element | null = null
+let inspectActive = false
+let inspectPaused = false
+
+let cardPinned = false
+let dragging = false
+let dragOffsetX = 0
+let dragOffsetY = 0
 
 /** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
@@ -157,8 +167,13 @@ function hideOverlay() {
 
 function isInsideQwikCSSUI(el: Element) {
   return (
-    !!el.closest?.(`#${CONTAINER_ID}`) ||
+    // Anything inside our injected UIs
+    !!el.closest?.(`#${CONTAINER_ID}, #${TOOLBAR_ID}, #${CARD_ID}`) ||
+    // Or the UI roots themselves
     el.id === CONTAINER_ID ||
+    el.id === TOOLBAR_ID ||
+    el.id === CARD_ID ||
+    el.id === CARD_HANDLE_ID ||
     el.id === OVERLAY_ID ||
     el.id === LABEL_ID
   )
@@ -209,15 +224,26 @@ function getElementFromPoint(x: number, y: number) {
 /** ---------------- Picking logic ---------------- */
 function onMouseMove(ev: MouseEvent) {
   if (!picking) return
+  if (inspectPaused) return
+
+  const raw = document.elementFromPoint(ev.clientX, ev.clientY)
+  if (raw && isInsideQwikCSSUI(raw)) {
+    // Don’t update hover target while interacting with QwikCSS UI
+    return
+  }
+
   const el = getElementFromPoint(ev.clientX, ev.clientY)
   if (!el) {
     lastHover = null
     hideOverlay()
+    hideCard()
     return
   }
+
   if (el !== lastHover) {
     lastHover = el
     positionOverlay(el)
+    updateHoverCard(el)
   }
 }
 
@@ -328,13 +354,27 @@ function onClick(ev: MouseEvent) {
   const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null
   iframe?.contentWindow?.postMessage(payload, '*')
 
-  stopPicking()
+  // Keep inspect running.
+  // Freeze the popup on the clicked element (pin), but keep hover optional.
+  currentElement = el
+  currentSelector = selector
+  cardPinned = true
+  inspectPaused = true // optional: click freezes until user resumes
+  updateHoverCard(el)
+  positionOverlay(el)
 }
 
 function startPicking() {
   if (picking) return
   picking = true
+  inspectActive = true
+  inspectPaused = false
+  cardPinned = false
+
   ensureOverlay()
+  ensureHoverCard()
+  mountToolbar()
+
   document.addEventListener('mousemove', onMouseMove, true)
   document.addEventListener('click', onClick, true)
 }
@@ -342,8 +382,14 @@ function startPicking() {
 function stopPicking() {
   if (!picking) return
   picking = false
+  inspectActive = false
+  inspectPaused = false
   lastHover = null
+
   hideOverlay()
+  hideCard()
+  unmountToolbar()
+
   document.removeEventListener('mousemove', onMouseMove, true)
   document.removeEventListener('click', onClick, true)
 }
@@ -444,6 +490,218 @@ function sendInspector() {
     selector: currentSelector,
     computed,
   })
+}
+
+function mountToolbar() {
+  if (document.getElementById(TOOLBAR_ID)) return
+
+  const bar = document.createElement('div')
+  bar.id = TOOLBAR_ID
+  bar.style.position = 'fixed'
+  bar.style.left = '14px'
+  bar.style.top = '14px'
+  bar.style.zIndex = '2147483647'
+  bar.style.display = 'flex'
+  bar.style.gap = '8px'
+  bar.style.alignItems = 'center'
+  bar.style.padding = '8px 10px'
+  bar.style.borderRadius = '999px'
+  bar.style.background = 'rgba(20,20,20,0.92)'
+  bar.style.color = '#fff'
+  bar.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial'
+  bar.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)'
+  bar.style.userSelect = 'none'
+
+  const btn = document.createElement('button')
+  btn.textContent = 'Pause Inspect'
+  btn.style.padding = '6px 10px'
+  btn.style.borderRadius = '999px'
+  btn.style.border = '1px solid rgba(255,255,255,0.18)'
+  btn.style.background = 'transparent'
+  btn.style.color = 'inherit'
+  btn.style.cursor = 'pointer'
+  btn.onclick = () => {
+    inspectPaused = !inspectPaused
+    btn.textContent = inspectPaused ? 'Resume Inspect' : 'Pause Inspect'
+    if (!inspectPaused) {
+      cardPinned = false
+    }
+  }
+
+  const pin = document.createElement('button')
+  pin.textContent = 'Pin'
+  pin.style.padding = '6px 10px'
+  pin.style.borderRadius = '999px'
+  pin.style.border = '1px solid rgba(255,255,255,0.18)'
+  pin.style.background = 'transparent'
+  pin.style.color = 'inherit'
+  pin.style.cursor = 'pointer'
+  pin.onclick = () => {
+    cardPinned = !cardPinned
+    pin.textContent = cardPinned ? 'Unpin' : 'Pin'
+  }
+
+  bar.appendChild(btn)
+  bar.appendChild(pin)
+  document.documentElement.appendChild(bar)
+}
+
+function unmountToolbar() {
+  document.getElementById(TOOLBAR_ID)?.remove()
+}
+
+function ensureHoverCard() {
+  if (document.getElementById(CARD_ID)) return
+
+  const card = document.createElement('div')
+  card.id = CARD_ID
+  card.style.position = 'fixed'
+  card.style.zIndex = '2147483647'
+  card.style.width = '260px'
+  card.style.borderRadius = '14px'
+  card.style.background = 'rgba(20,20,20,0.94)'
+  card.style.color = '#fff'
+  card.style.boxShadow = '0 14px 38px rgba(0,0,0,0.35)'
+  card.style.backdropFilter = 'blur(10px)'
+  card.style.font = '12px/1.25 system-ui, -apple-system, Segoe UI, Roboto, Arial'
+  card.style.display = 'none'
+  card.style.userSelect = 'none'
+
+  const handle = document.createElement('div')
+  handle.id = CARD_HANDLE_ID
+  handle.style.display = 'flex'
+  handle.style.justifyContent = 'space-between'
+  handle.style.alignItems = 'center'
+  handle.style.padding = '10px 12px'
+  handle.style.cursor = 'move'
+  handle.style.borderBottom = '1px solid rgba(255,255,255,0.10)'
+
+  const title = document.createElement('div')
+  title.style.fontWeight = '700'
+  title.textContent = 'Inspect'
+
+  const hint = document.createElement('div')
+  hint.style.opacity = '0.7'
+  hint.textContent = 'drag'
+
+  handle.appendChild(title)
+  handle.appendChild(hint)
+
+  const body = document.createElement('div')
+  body.style.padding = '10px 12px'
+  body.innerHTML = `
+    <div style="opacity:.85;margin-bottom:8px" id="__qwikcss_card_line1__">—</div>
+    <div style="opacity:.85;margin-bottom:8px" id="__qwikcss_card_line2__">—</div>
+    <div style="opacity:.85" id="__qwikcss_card_line3__">—</div>
+  `
+  ensureQwikCSSResetStyle()
+  card.appendChild(handle)
+  card.appendChild(body)
+  document.documentElement.appendChild(card)
+
+  // Drag logic
+  handle.addEventListener('mousedown', (ev) => {
+    dragging = true
+    cardPinned = true // dragging implies pin
+    const rect = card.getBoundingClientRect()
+    dragOffsetX = ev.clientX - rect.left
+    dragOffsetY = ev.clientY - rect.top
+    ev.preventDefault()
+    ev.stopPropagation()
+  })
+
+  document.addEventListener(
+    'mousemove',
+    (ev) => {
+      if (!dragging) return
+      const x = ev.clientX - dragOffsetX
+      const y = ev.clientY - dragOffsetY
+      setCardPos(x, y)
+    },
+    true
+  )
+
+  document.addEventListener(
+    'mouseup',
+    () => {
+      dragging = false
+    },
+    true
+  )
+}
+
+function setCardPos(x: number, y: number) {
+  const card = document.getElementById(CARD_ID) as HTMLDivElement | null
+  if (!card) return
+  const w = card.offsetWidth || 260
+  const h = card.offsetHeight || 120
+  const px = Math.min(window.innerWidth - 10, Math.max(10, x))
+  const py = Math.min(window.innerHeight - 10, Math.max(10, y))
+  card.style.left = `${Math.min(px, window.innerWidth - w - 10)}px`
+  card.style.top = `${Math.min(py, window.innerHeight - h - 10)}px`
+}
+
+function showCard() {
+  const card = document.getElementById(CARD_ID) as HTMLDivElement | null
+  if (card) card.style.display = 'block'
+}
+
+function hideCard() {
+  const card = document.getElementById(CARD_ID) as HTMLDivElement | null
+  if (card) card.style.display = 'none'
+}
+
+function updateHoverCard(el: Element) {
+  ensureHoverCard()
+  showCard()
+
+  const rect = el.getBoundingClientRect()
+  const cs = getComputedStyle(el as Element)
+
+  const tag = el.tagName.toLowerCase()
+  const w = Math.round(rect.width)
+  const h = Math.round(rect.height)
+
+  const fontFamily = (cs.fontFamily || '').split(',')[0]?.trim() || '—'
+  const fontSize = cs.fontSize || '—'
+
+  const line1 = document.getElementById('__qwikcss_card_line1__')
+  const line2 = document.getElementById('__qwikcss_card_line2__')
+  const line3 = document.getElementById('__qwikcss_card_line3__')
+
+  if (line1) line1.textContent = `${tag}  —  ${w}×${h}`
+  if (line2) line2.textContent = `font: ${fontFamily}  ${fontSize}`
+  if (line3) line3.textContent = `pos: ${Math.round(rect.left)}, ${Math.round(rect.top)}`
+
+  // If not pinned by user, place it near hovered element (like CSS Pro)
+  if (!cardPinned && !dragging) {
+    const pad = 10
+    const x = rect.right + pad
+    const y = rect.top
+    setCardPos(x, y)
+  }
+}
+
+function ensureQwikCSSResetStyle() {
+  const id = '__qwikcss_reset__'
+  if (document.getElementById(id)) return
+  const s = document.createElement('style')
+  s.id = id
+  s.textContent = `
+    #${CARD_ID}, #${CARD_ID} * {
+      outline: none !important;
+      box-shadow: none;
+    }
+    #${CARD_HANDLE_ID}:focus, #${CARD_HANDLE_ID}:active {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    #${CARD_ID} {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  `
+  document.documentElement.appendChild(s)
 }
 
 /** Boot */
