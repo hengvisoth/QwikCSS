@@ -258,6 +258,13 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (ch) => map[ch] || ch)
 }
 
+function isTrivialValue(value: string) {
+  const v = value.trim().toLowerCase()
+  if (v === 'none') return true
+  const normalized = v.replace(/\s*\/\s*/g, ' ')
+  return /^0(?:\.0+)?([a-z%]+)?(\s+0(?:\.0+)?([a-z%]+)?)*$/.test(normalized)
+}
+
 function getElementPath(el: Element, maxDepth = 4) {
   const raw: string[] = []
   let cur: Element | null = el
@@ -815,8 +822,8 @@ function ensureHoverCard() {
   closeBtn.addEventListener('click', (ev) => {
     ev.preventDefault()
     ev.stopPropagation()
-    setPaused(false)
-    notifyState()
+    cardPinned = false
+    hideCard()
   })
 
   right.appendChild(closeBtn)
@@ -933,7 +940,7 @@ function updateHoverCard(el: Element) {
     const rows: string[] = []
     for (const prop of INSPECT_PROPS) {
       const value = cs.getPropertyValue(prop).trim()
-      if (!value) continue
+      if (!value || isTrivialValue(value)) continue
       const safeValue = escapeHtml(value)
       const showSwatch =
         COLOR_PROPS.has(prop) &&
