@@ -10,10 +10,33 @@ const LABEL_ID = '__qwikcss_label__'
 const STYLE_ID = '__qwikcss_style__'
 const STORAGE_KEY = `qwikcss:${location.host}`
 
+const INSPECT_PROPS = [
+  'display',
+  'position',
+  'width',
+  'height',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'font-size',
+  'font-weight',
+  'line-height',
+  'color',
+  'background-color',
+  'border-radius',
+  'box-shadow',
+] as const
+
 let picking = false
 let lastHover: Element | null = null
 let currentSelector: string | null = null
 let saveTimer: number | null = null
+let currentElement: Element | null = null
 
 /** ---------------- Panel (iframe) ---------------- */
 function mountPanel() {
@@ -291,6 +314,8 @@ function onClick(ev: MouseEvent) {
 
   const selector = buildSelector(el)
   currentSelector = selector
+  currentElement = el
+  sendInspector()
 
   const payload = {
     type: 'QWIKCSS_SELECTED',
@@ -350,6 +375,7 @@ function applyDecl(selector: string, prop: string, value: string) {
   if (!patch[selector]) patch[selector] = {}
   patch[selector][prop] = value
   rebuildCSS()
+  sendInspector()
 }
 
 function removeDecl(selector: string, prop: string) {
@@ -357,6 +383,7 @@ function removeDecl(selector: string, prop: string) {
   delete patch[selector][prop]
   if (Object.keys(patch[selector]).length === 0) delete patch[selector]
   rebuildCSS()
+  sendInspector()
 }
 
 function exportCSS() {
@@ -400,6 +427,23 @@ async function loadPatchFromStorage() {
   } catch (err) {
     postToPanel({ type: 'QWIKCSS_SAVE_ERROR', message: String(err) })
   }
+}
+
+function getComputedSnapshot(el: Element) {
+  const cs = getComputedStyle(el as Element)
+  const out: Record<string, string> = {}
+  for (const p of INSPECT_PROPS) out[p] = cs.getPropertyValue(p).trim()
+  return out
+}
+
+function sendInspector() {
+  if (!currentElement || !currentSelector) return
+  const computed = getComputedSnapshot(currentElement)
+  postToPanel({
+    type: 'QWIKCSS_INSPECT',
+    selector: currentSelector,
+    computed,
+  })
 }
 
 /** Boot */

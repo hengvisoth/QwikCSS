@@ -6,6 +6,15 @@ const selected = ref<string>('none')
 const prop = ref<string>('background')
 const value = ref<string>('#ff0')
 const exported = ref<string>('')
+const computed = ref<Record<string, string>>({})
+const presets = [
+  { label: 'Padding 8px', prop: 'padding', value: '8px' },
+  { label: 'Padding 16px', prop: 'padding', value: '16px' },
+  { label: 'Margin 16px', prop: 'margin', value: '16px' },
+  { label: 'Center text', prop: 'text-align', value: 'center' },
+  { label: 'Rounded 12px', prop: 'border-radius', value: '12px' },
+  { label: 'Outline red', prop: 'outline', value: '2px solid red' },
+]
 
 const startPick = () => window.parent.postMessage({ type: 'QWIKCSS_START_PICK' }, '*')
 const stopPick = () => window.parent.postMessage({ type: 'QWIKCSS_STOP_PICK' }, '*')
@@ -19,11 +28,17 @@ const remove = () => window.parent.postMessage({ type: 'QWIKCSS_REMOVE', prop: p
 const doExport = () => window.parent.postMessage({ type: 'QWIKCSS_EXPORT' }, '*')
 const clearSite = () => window.parent.postMessage({ type: 'QWIKCSS_CLEAR_SITE' }, '*')
 
+const useRow = (k: string, v: string) => {
+  prop.value = k
+  value.value = v
+}
+const applyPreset = (p: { prop: string; value: string }) => {
+  prop.value = p.prop
+  value.value = p.value
+  apply()
+}
+
 const onMsg = (e: MessageEvent) => {
-  if (e?.data?.type === 'QWIKCSS_SELECTED') {
-    selected.value = e.data.selector || 'none'
-    exported.value = ''
-  }
   if (e?.data?.type === 'QWIKCSS_EXPORT_RESULT') {
     exported.value = e.data.css || ''
   }
@@ -32,6 +47,16 @@ const onMsg = (e: MessageEvent) => {
   if (e?.data?.type === 'QWIKCSS_SAVED') status.value = 'Saved'
   if (e?.data?.type === 'QWIKCSS_CLEARED') status.value = 'Cleared'
   if (e?.data?.type === 'QWIKCSS_SAVE_ERROR') status.value = `Save error: ${e.data.message}`
+  if (e?.data?.type === 'QWIKCSS_SELECTED') {
+    selected.value = e.data.selector || 'none'
+    exported.value = ''
+    computed.value = {}
+  }
+
+  if (e?.data?.type === 'QWIKCSS_INSPECT') {
+    if (e.data.selector) selected.value = e.data.selector
+    computed.value = e.data.computed || {}
+  }
 }
 
 onMounted(() => window.addEventListener('message', onMsg))
@@ -54,6 +79,35 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
       <div v-if="status"><b>Status:</b> {{ status }}</div>
 
       <div><b>Selected:</b> {{ selected }}</div>
+      <div class="section">
+        <div class="sectionTitle">Presets</div>
+        <div class="chips">
+          <button v-for="p in presets" :key="p.label" @click="applyPreset(p)">
+            {{ p.label }}
+          </button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Inspector (computed)</div>
+
+        <div v-if="Object.keys(computed).length === 0" class="muted">
+          Pick an element to see computed styles.
+        </div>
+
+        <div v-else class="grid">
+          <div
+            v-for="(v, k) in computed"
+            :key="k"
+            class="rowItem"
+            @click="useRow(String(k), String(v))"
+            title="Click to fill inputs"
+          >
+            <div class="k">{{ k }}</div>
+            <div class="v">{{ v }}</div>
+          </div>
+        </div>
+      </div>
 
       <div class="row">
         <input class="inp" v-model="prop" placeholder="property (e.g. margin-top)" />
@@ -107,6 +161,54 @@ button {
 .out {
   width: 100%;
   height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.section {
+  margin-top: 6px;
+}
+.sectionTitle {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.muted {
+  opacity: 0.7;
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chips button {
+  padding: 6px 10px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.rowItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.k {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.v {
+  text-align: right;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
 }
