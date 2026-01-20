@@ -70,17 +70,20 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
 </template>
 
 <style scoped>
+:global(html),
+:global(body),
+:global(#app) {
+  height: 100%;
+}
+
 :global(body) {
   margin: 0;
   background: transparent;
 }
 
-:global(#app) {
-  height: 100%;
-}
-
 .wrap {
-  min-height: 30vh;
+  height: 100%;
+  width: 100%;
   background: transparent;
   display: grid;
   place-items: center;

@@ -2,7 +2,9 @@
 
 const CONTAINER_ID = '__qwikcss_root__'
 const IFRAME_ID = '__qwikcss_iframe__'
-const PANEL_HEIGHT = 280
+const PANEL_HEIGHT = 88
+const PANEL_WIDTH = 220
+const PANEL_MARGIN = 16
 
 const OVERLAY_ID = '__qwikcss_overlay__'
 const LABEL_ID = '__qwikcss_label__'
@@ -76,10 +78,13 @@ function mountPanel() {
   const container = document.createElement('div')
   container.id = CONTAINER_ID
   container.style.position = 'fixed'
-  container.style.left = '0'
-  container.style.right = '0'
-  container.style.bottom = '0'
+  container.style.left = '50%'
+  container.style.top = `${PANEL_MARGIN}px`
+  container.style.transform = 'translateX(-50%)'
+  container.style.right = 'auto'
+  container.style.bottom = 'auto'
   container.style.height = `${PANEL_HEIGHT}px`
+  container.style.width = `${PANEL_WIDTH}px`
   container.style.zIndex = '2147483647'
   container.style.background = 'transparent'
 
@@ -89,8 +94,8 @@ function mountPanel() {
   iframe.style.width = '100%'
   iframe.style.height = '100%'
   iframe.style.border = '0'
-  iframe.style.background = 'white'
-  iframe.style.boxShadow = '0 -8px 24px rgba(0,0,0,0.15)'
+  iframe.style.background = 'transparent'
+  iframe.style.boxShadow = 'none'
 
   container.appendChild(iframe)
   document.documentElement.appendChild(container)
