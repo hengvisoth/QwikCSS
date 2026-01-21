@@ -97,7 +97,11 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
 
 :global(body) {
   margin: 0;
-  background: transparent;
+  background: transparent !important;
+}
+
+:global(html) {
+  background: transparent !important;
 }
 
 .wrap {
@@ -120,7 +124,6 @@ onBeforeUnmount(() => window.removeEventListener('message', onMsg))
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(16px);
   animation: dock-in 240ms ease-out;
 }
 
