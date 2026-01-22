@@ -234,9 +234,19 @@ function ensureQwikCSSResetStyle() {
       display: none;
       flex-direction: column;
       gap: 12px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 4px;
     }
     #${CARD_ID}[data-mode='edit'] .qwikcss-card-edit {
       display: flex;
+    }
+    #${CARD_ID} .qwikcss-card-edit::-webkit-scrollbar {
+      width: 6px;
+    }
+    #${CARD_ID} .qwikcss-card-edit::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
     }
     #${CARD_ID} .qwikcss-card-tabs {
       display: flex;
