@@ -1,4 +1,5 @@
-import { CARD_HANDLE_ID, CARD_ID, COLOR_PROPS, INSPECT_PROPS, RESET_STYLE_ID } from '../constants'
+import { createApp, type App } from 'vue'
+import { CARD_HANDLE_ID, CARD_ID, COLOR_PROPS, INSPECT_PROPS } from '../constants'
 import { notifyState, setPaused } from '../actions'
 import { sendInspector } from '../inspector'
 import {
@@ -13,6 +14,8 @@ import { buildSelector } from '../selectors'
 import { state } from '../state'
 import { describeElement, escapeHtml, formatNumber, getElementPath, isTrivialValue } from '../utils'
 import { hideOverlay, positionOverlay } from './overlay'
+import HoverCardView from './HoverCard.vue'
+import './hoverCard.css'
 
 type GeomField = {
   key: 'x' | 'y' | 'rotate' | 'width' | 'height' | 'radius'
@@ -34,11 +37,14 @@ const GEOM_FIELDS: GeomField[] = [
 type TransformParts = { x: string; y: string; r: string }
 
 const transformStore: Record<string, TransformParts> = {}
+let hoverCardApp: App<Element> | null = null
 
 const AUTO_PX_PROPS = new Set([
   'width',
   'height',
   'border-radius',
+  'font-size',
+  'letter-spacing',
   'margin-top',
   'margin-right',
   'margin-bottom',
@@ -50,513 +56,39 @@ const AUTO_PX_PROPS = new Set([
   'gap',
 ])
 
-function ensureQwikCSSResetStyle() {
-  if (document.getElementById(RESET_STYLE_ID)) return
-  const s = document.createElement('style')
-  s.id = RESET_STYLE_ID
-  s.textContent = `
-    #${CARD_ID}, #${CARD_ID} * {
-      box-sizing: border-box;
-      outline: none !important;
-      box-shadow: none;
-    }
-    #${CARD_ID} {
-      --card-bg: linear-gradient(180deg, rgba(20, 22, 28, 0.96), rgba(12, 13, 16, 0.98));
-      --card-border: rgba(255, 255, 255, 0.12);
-      --card-text: #e7edf5;
-      --card-muted: rgba(231, 237, 245, 0.6);
-      --card-accent: #6ee7ff;
-      --card-accent-2: #7cffad;
-      font-family: 'Space Grotesk', 'Manrope', 'Avenir Next', system-ui, sans-serif;
-      font-size: 12px;
-      line-height: 1.35;
-      color: var(--card-text);
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(14px);
-      -webkit-user-select: none;
-      user-select: none;
-      overflow: hidden;
-    }
-    #${CARD_ID} .qwikcss-card-handle {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 10px 12px;
-      background: rgba(255, 255, 255, 0.02);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      cursor: move;
-    }
-    #${CARD_ID} .qwikcss-card-crumbs {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1;
-      min-width: 0;
-    }
-    #${CARD_ID} .qwikcss-card-crumb {
-      position: relative;
-      font-size: 11px;
-      padding-left: 14px;
-      color: rgba(231, 237, 245, 0.6);
-      letter-spacing: 0.02em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #${CARD_ID} .qwikcss-card-crumb::before {
-      content: '';
-      position: absolute;
-      left: 4px;
-      top: 50%;
-      width: 4px;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(110, 231, 255, 0.5);
-      transform: translateY(-50%);
-    }
-    #${CARD_ID} .qwikcss-card-crumb.is-current {
-      color: var(--card-accent);
-      font-weight: 600;
-    }
-    #${CARD_ID} .qwikcss-card-crumb.is-current::before {
-      background: var(--card-accent);
-    }
-    #${CARD_ID} .qwikcss-card-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    #${CARD_ID} .qwikcss-card-close {
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.06);
-      color: inherit;
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 26px;
-      padding: 0;
-    }
-    #${CARD_ID} .qwikcss-card-close:hover {
-      border-color: rgba(255, 255, 255, 0.32);
-      background: rgba(255, 255, 255, 0.12);
-    }
-    #${CARD_ID} .qwikcss-card-body {
-      padding: 10px 12px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    #${CARD_ID} .qwikcss-card-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--card-accent);
-      letter-spacing: 0.01em;
-    }
-    #${CARD_ID} .qwikcss-card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    #${CARD_ID} .qwikcss-card-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(231, 237, 245, 0.9);
-      font-size: 11px;
-    }
-    #${CARD_ID} .qwikcss-card-chip .chip-label {
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-size: 9px;
-      color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-props {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 260px;
-      overflow: auto;
-      padding-right: 4px;
-    }
-    #${CARD_ID} .qwikcss-card-props::-webkit-scrollbar {
-      width: 6px;
-    }
-    #${CARD_ID} .qwikcss-card-props::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 999px;
-    }
-    #${CARD_ID} .qwikcss-card-prop {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(255, 255, 255, 0.03);
-    }
-    #${CARD_ID} .qwikcss-card-prop .k {
-      color: var(--card-accent);
-      font-size: 14px;
-      letter-spacing: 0.03em;
-    }
-    #${CARD_ID} .qwikcss-card-prop .v {
-      color: rgba(231, 237, 245, 0.9);
-      font-size: 14px;
-      text-align: right;
-      word-break: break-word;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      justify-content: flex-end;
-    }
-    #${CARD_ID} .qwikcss-card-prop .swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 3px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
-      flex-shrink: 0;
-    }
-    #${CARD_ID}[data-mode='edit'] .qwikcss-card-props {
-      display: none;
-    }
-    #${CARD_ID} .qwikcss-card-edit {
-      display: none;
-      flex-direction: column;
-      gap: 12px;
-      max-height: 360px;
-      overflow-y: auto;
-      padding-right: 4px;
-    }
-    #${CARD_ID}[data-mode='edit'] .qwikcss-card-edit {
-      display: flex;
-    }
-    #${CARD_ID} .qwikcss-card-edit::-webkit-scrollbar {
-      width: 6px;
-    }
-    #${CARD_ID} .qwikcss-card-edit::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 999px;
-    }
-    #${CARD_ID} .qwikcss-card-tabs {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    #${CARD_ID} .qwikcss-card-tab {
-      position: relative;
-      background: transparent;
-      border: 0;
-      color: var(--card-muted);
-      font-size: 12px;
-      cursor: pointer;
-      padding: 0 0 6px;
-    }
-    #${CARD_ID} .qwikcss-card-tab.is-active {
-      color: var(--card-text);
-    }
-    #${CARD_ID} .qwikcss-card-tab.is-active::after {
-      content: '';
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: -1px;
-      height: 2px;
-      border-radius: 999px;
-      background: var(--card-accent);
-    }
-    #${CARD_ID} .qwikcss-card-badge {
-      margin-left: 6px;
-      padding: 1px 6px;
-      border-radius: 999px;
-      font-size: 9px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #fff;
-      background: #ff5f5f;
-    }
-    #${CARD_ID} .qwikcss-card-select {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--card-text);
-      cursor: pointer;
-    }
-    #${CARD_ID} .qwikcss-card-select .label {
-      color: var(--card-muted);
-      font-size: 11px;
-    }
-    #${CARD_ID} .qwikcss-card-select .value {
-      font-weight: 600;
-      color: #ff8ad4;
-    }
-    #${CARD_ID} .qwikcss-card-select .value.accent {
-      color: #7cffad;
-    }
-    #${CARD_ID} .qwikcss-card-select .chev {
-      color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-geom {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-    #${CARD_ID} .qwikcss-card-field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 8px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.03);
-    }
-    #${CARD_ID} .qwikcss-card-field.is-overridden {
-      border-color: rgba(124, 255, 173, 0.45);
-      background: rgba(124, 255, 173, 0.12);
-    }
-    #${CARD_ID} .qwikcss-card-field .label {
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-field input {
-      background: transparent;
-      border: 0;
-      padding: 0;
-      color: var(--card-text);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: ew-resize;
-    }
-    #${CARD_ID} .qwikcss-card-field input:focus {
-      outline: none;
-      cursor: text;
-    }
-    #${CARD_ID} .qwikcss-card-section-list {
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    #${CARD_ID} .qwikcss-card-section {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 10px 4px;
-      border: 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      background: transparent;
-      color: rgba(124, 255, 173, 0.7);
-      font-size: 12px;
-      cursor: pointer;
-    }
-    #${CARD_ID} .qwikcss-card-section .chev {
-      transition: transform 160ms ease;
-    }
-    #${CARD_ID} .qwikcss-card-section.is-open {
-      color: #7cffad;
-    }
-    #${CARD_ID} .qwikcss-card-section .chev {
-      color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-section.is-open .chev {
-      transform: rotate(90deg);
-    }
-    #${CARD_ID} .qwikcss-card-section-panel {
-      display: none;
-      padding: 8px 0 6px;
-    }
-    #${CARD_ID}[data-section-open='spacing']
-      .qwikcss-card-section-panel[data-section='spacing'] {
-      display: block;
-    }
-    #${CARD_ID} .qwikcss-card-spacing {
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      padding: 10px;
-      background: rgba(10, 10, 14, 0.7);
-    }
-    #${CARD_ID} .qwikcss-spacing-label {
-      font-size: 11px;
-      color: var(--card-muted);
-      font-style: italic;
-      margin-bottom: 6px;
-    }
-    #${CARD_ID} .qwikcss-spacing-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(120px, 1.1fr) minmax(0, 1fr);
-      grid-template-rows: auto auto auto;
-      gap: 8px;
-      align-items: center;
-    }
-    #${CARD_ID} .qwikcss-spacing-cell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 6px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.03);
-    }
-    #${CARD_ID} .qwikcss-spacing-cell.is-overridden {
-      border-color: rgba(124, 255, 173, 0.45);
-      background: rgba(124, 255, 173, 0.12);
-    }
-    #${CARD_ID} .qwikcss-spacing-cell input {
-      width: 100%;
-      text-align: center;
-      background: transparent;
-      border: 0;
-      padding: 0;
-      color: var(--card-text);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: ew-resize;
-    }
-    #${CARD_ID} .qwikcss-spacing-cell input:focus {
-      outline: none;
-      cursor: text;
-    }
-    #${CARD_ID} .qwikcss-spacing-pad {
-      grid-column: 2;
-      grid-row: 2;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(3, auto);
-      gap: 6px;
-      align-items: center;
-      padding: 8px;
-      border-radius: 10px;
-      border: 1px solid rgba(124, 255, 173, 0.35);
-      background: rgba(124, 255, 173, 0.08);
-    }
-    #${CARD_ID} .qwikcss-spacing-pad-cell {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(10, 10, 14, 0.4);
-    }
-    #${CARD_ID} .qwikcss-spacing-pad-cell.is-overridden {
-      border-color: rgba(124, 255, 173, 0.45);
-      background: rgba(124, 255, 173, 0.16);
-    }
-    #${CARD_ID} .qwikcss-spacing-pad .pad-label {
-      grid-column: 2;
-      grid-row: 2;
-      font-size: 11px;
-      color: var(--card-muted);
-      font-style: italic;
-      text-align: center;
-    }
-    #${CARD_ID} .qwikcss-spacing-pad input {
-      width: 100%;
-      text-align: center;
-      background: transparent;
-      border: 0;
-      padding: 0;
-      color: var(--card-text);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: ew-resize;
-    }
-    #${CARD_ID} .qwikcss-spacing-pad input:focus {
-      outline: none;
-      cursor: text;
-    }
-    #${CARD_ID} .qwikcss-spacing-top {
-      grid-column: 2;
-      grid-row: 1;
-    }
-    #${CARD_ID} .qwikcss-spacing-left {
-      grid-column: 1;
-      grid-row: 2;
-    }
-    #${CARD_ID} .qwikcss-spacing-right {
-      grid-column: 3;
-      grid-row: 2;
-    }
-    #${CARD_ID} .qwikcss-spacing-bottom {
-      grid-column: 2;
-      grid-row: 3;
-    }
-    #${CARD_ID} .qwikcss-pad-top {
-      grid-column: 2;
-      grid-row: 1;
-    }
-    #${CARD_ID} .qwikcss-pad-left {
-      grid-column: 1;
-      grid-row: 2;
-    }
-    #${CARD_ID} .qwikcss-pad-right {
-      grid-column: 3;
-      grid-row: 2;
-    }
-    #${CARD_ID} .qwikcss-pad-bottom {
-      grid-column: 2;
-      grid-row: 3;
-    }
-    #${CARD_ID} .qwikcss-card-edit-actions {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    #${CARD_ID} .qwikcss-card-btn {
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.06);
-      color: inherit;
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      cursor: pointer;
-    }
-    #${CARD_ID} .qwikcss-card-btn:hover {
-      border-color: rgba(255, 255, 255, 0.32);
-      background: rgba(255, 255, 255, 0.12);
-    }
-    #${CARD_ID} .qwikcss-card-btn:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
-    #${CARD_ID} .qwikcss-card-hint {
-      font-size: 10px;
-      color: var(--card-muted);
-    }
-    #${CARD_ID} input,
-    #${CARD_ID} select {
-      -webkit-user-select: text;
-      user-select: text;
-    }
-  `
-  document.documentElement.appendChild(s)
-}
+const FONT_FAMILY_OPTIONS = [
+  { label: 'Space Grotesk', value: "'Space Grotesk', system-ui, sans-serif" },
+  { label: 'Manrope', value: "'Manrope', system-ui, sans-serif" },
+  { label: 'Avenir Next', value: "'Avenir Next', system-ui, sans-serif" },
+  { label: 'Inter', value: "'Inter', system-ui, sans-serif" },
+  { label: 'Roboto', value: "'Roboto', system-ui, sans-serif" },
+  { label: 'Helvetica', value: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
+  { label: 'Georgia', value: "Georgia, 'Times New Roman', serif" },
+  { label: 'Courier', value: "'Courier New', Courier, monospace" },
+  { label: 'System', value: 'system-ui' },
+]
+
+const FONT_WEIGHT_OPTIONS = [
+  '100',
+  '200',
+  '300',
+  '400',
+  '500',
+  '600',
+  '700',
+  '800',
+  '900',
+  'normal',
+  'bold',
+]
 
 function ensureHoverCard() {
   if (document.getElementById(CARD_ID)) return
 
-  ensureQwikCSSResetStyle()
+  if (hoverCardApp) {
+    hoverCardApp.unmount()
+    hoverCardApp = null
+  }
 
   const card = document.createElement('div')
   card.id = CARD_ID
@@ -565,132 +97,50 @@ function ensureHoverCard() {
   card.style.width = '320px'
   card.style.display = 'none'
   card.style.userSelect = 'none'
-
-  const handle = document.createElement('div')
-  handle.id = CARD_HANDLE_ID
-  handle.className = 'qwikcss-card-handle'
-
-  const crumbs = document.createElement('div')
-  crumbs.id = '__qwikcss_card_crumbs__'
-  crumbs.className = 'qwikcss-card-crumbs'
-
-  const right = document.createElement('div')
-  right.className = 'qwikcss-card-actions'
-
-  const closeBtn = document.createElement('button')
-  closeBtn.className = 'qwikcss-card-close'
-  closeBtn.textContent = '×'
-  closeBtn.setAttribute('type', 'button')
-  closeBtn.title = 'Resume inspect'
-
-  closeBtn.addEventListener('mousedown', (ev) => {
-    ev.preventDefault()
-    ev.stopPropagation()
-  })
-  closeBtn.addEventListener('click', (ev) => {
-    ev.preventDefault()
-    ev.stopPropagation()
-    if (state.cardEditing) {
-      exitEdit()
-      return
-    }
-    if (state.inspectPaused) {
-      setPaused(false)
-      notifyState()
-    }
-    state.cardPinned = false
-    hideOverlay()
-    hideCard()
-  })
-
-  right.appendChild(closeBtn)
-
-  handle.appendChild(crumbs)
-  handle.appendChild(right)
-
-  const body = document.createElement('div')
-  body.className = 'qwikcss-card-body'
-  body.innerHTML = `
-    <div class="qwikcss-card-title" id="__qwikcss_card_title__">—</div>
-    <div class="qwikcss-card-meta">
-      <div class="qwikcss-card-chip">
-        <span class="chip-label">size</span>
-        <span id="__qwikcss_card_size__">—</span>
-      </div>
-      <div class="qwikcss-card-chip">
-        <span class="chip-label">font</span>
-        <span id="__qwikcss_card_font__">—</span>
-      </div>
-    </div>
-    <div class="qwikcss-card-props" id="__qwikcss_card_props__"></div>
-    <div class="qwikcss-card-edit" id="__qwikcss_card_edit__">
-      <div class="qwikcss-card-tabs">
-        <button class="qwikcss-card-tab is-active" type="button">Design</button>
-        <button class="qwikcss-card-tab" type="button">Code</button>
-        <button class="qwikcss-card-tab" type="button">HTML</button>
-        <button class="qwikcss-card-tab" type="button">
-          Chat <span class="qwikcss-card-badge">NEW</span>
-        </button>
-      </div>
-      <button class="qwikcss-card-select" type="button">
-        <span class="label">Media:</span>
-        <span class="value">Auto - None</span>
-        <span class="chev">v</span>
-      </button>
-      <button class="qwikcss-card-select" type="button">
-        <span class="label">State or pseudo</span>
-        <span class="value accent">None</span>
-        <span class="chev">v</span>
-      </button>
-      <div class="qwikcss-card-geom" id="__qwikcss_card_geom__"></div>
-      <div class="qwikcss-card-section-list">
-        <button class="qwikcss-card-section" type="button" data-section="spacing">
-          Spacing <span class="chev">></span>
-        </button>
-        <div class="qwikcss-card-section-panel" data-section="spacing">
-          <div class="qwikcss-card-spacing" id="__qwikcss_card_spacing__"></div>
-        </div>
-        <button class="qwikcss-card-section" type="button">
-          Typography <span class="chev">></span>
-        </button>
-        <button class="qwikcss-card-section" type="button">
-          Background <span class="chev">></span>
-        </button>
-        <button class="qwikcss-card-section" type="button">
-          Display <span class="chev">></span>
-        </button>
-        <button class="qwikcss-card-section" type="button">
-          Border <span class="chev">></span>
-        </button>
-        <button class="qwikcss-card-section" type="button">
-          Positioning <span class="chev">></span>
-        </button>
-      </div>
-      <div class="qwikcss-card-edit-actions">
-        <button class="qwikcss-card-btn" type="button" data-action="reset-all">Reset all</button>
-        <span class="qwikcss-card-hint">Close edit to resume inspect</span>
-      </div>
-    </div>
-  `
-
-  card.appendChild(handle)
-  card.appendChild(body)
   document.documentElement.appendChild(card)
+  hoverCardApp = createApp(HoverCardView)
+  hoverCardApp.mount(card)
+
+  const closeBtn = card.querySelector<HTMLButtonElement>('.qwikcss-card-close')
+  if (closeBtn) {
+    closeBtn.addEventListener('mousedown', (ev) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+    })
+    closeBtn.addEventListener('click', (ev) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (state.cardEditing) {
+        exitEdit()
+        return
+      }
+      if (state.inspectPaused) {
+        setPaused(false)
+        notifyState()
+      }
+      state.cardPinned = false
+      hideOverlay()
+      hideCard()
+    })
+  }
 
   card.addEventListener('click', handleCardClick)
   card.addEventListener('input', handleCardInput)
   card.addEventListener('change', handleCardInput)
   card.addEventListener('mousedown', handleScrubStart, true)
 
-  handle.addEventListener('mousedown', (ev) => {
-    state.dragging = true
-    state.cardPinned = true
-    const rect = card.getBoundingClientRect()
-    state.dragOffsetX = ev.clientX - rect.left
-    state.dragOffsetY = ev.clientY - rect.top
-    ev.preventDefault()
-    ev.stopPropagation()
-  })
+  const handle = card.querySelector<HTMLElement>(`#${CARD_HANDLE_ID}`)
+  if (handle) {
+    handle.addEventListener('mousedown', (ev) => {
+      state.dragging = true
+      state.cardPinned = true
+      const rect = card.getBoundingClientRect()
+      state.dragOffsetX = ev.clientX - rect.left
+      state.dragOffsetY = ev.clientY - rect.top
+      ev.preventDefault()
+      ev.stopPropagation()
+    })
+  }
 
   document.addEventListener(
     'mousemove',
@@ -787,6 +237,72 @@ function getUnitFromValue(value: string, fallback = 'px') {
   return match[1] || fallback
 }
 
+function formatFontLabel(value: string) {
+  const first = value.split(',')[0]?.trim() || value.trim()
+  return first.replace(/^['"]|['"]$/g, '') || value
+}
+
+function renderFontOptions(current: string) {
+  const options = [...FONT_FAMILY_OPTIONS]
+  const currentLabel = current ? formatFontLabel(current) : ''
+  if (current && !options.some((opt) => opt.value === current)) {
+    options.unshift({ label: currentLabel || current, value: current })
+  }
+  return options
+    .map((opt) => {
+      const selected = opt.value === current ? ' selected' : ''
+      return `<option value="${escapeHtml(opt.value)}"${selected}>${escapeHtml(
+        opt.label
+      )}</option>`
+    })
+    .join('')
+}
+
+function renderWeightOptions(current: string) {
+  const options = [...FONT_WEIGHT_OPTIONS]
+  if (current && !options.includes(current)) options.unshift(current)
+  return options
+    .map((opt) => {
+      const selected = opt === current ? ' selected' : ''
+      return `<option value="${escapeHtml(opt)}"${selected}>${escapeHtml(opt)}</option>`
+    })
+    .join('')
+}
+
+function normalizeHexColor(value: string) {
+  const v = value.trim()
+  const hex3 = v.match(/^#([0-9a-f]{3})$/i)
+  if (hex3) {
+    const full = hex3[1]
+      .split('')
+      .map((ch) => ch + ch)
+      .join('')
+    return `#${full.toLowerCase()}`
+  }
+  const hex6 = v.match(/^#([0-9a-f]{6})$/i)
+  if (hex6) return `#${hex6[1].toLowerCase()}`
+  return null
+}
+
+function rgbToHex(value: string) {
+  const match = value.trim().match(/^rgba?\(([^)]+)\)$/i)
+  if (!match) return null
+  const parts = match[1].split(',').map((v) => Number.parseFloat(v.trim()))
+  if (parts.length < 3 || parts.some((v) => Number.isNaN(v))) return null
+  const toHex = (n: number) => {
+    const clamped = Math.max(0, Math.min(255, Math.round(n)))
+    return clamped.toString(16).padStart(2, '0')
+  }
+  return `#${toHex(parts[0])}${toHex(parts[1])}${toHex(parts[2])}`
+}
+
+function normalizeColorValue(value: string) {
+  if (!value) return null
+  const hex = normalizeHexColor(value)
+  if (hex) return hex
+  return rgbToHex(value)
+}
+
 function parseTransform(value: string): TransformParts {
   const fallback = { x: '0px', y: '0px', r: '0deg' }
   if (!value || value === 'none') return fallback
@@ -855,7 +371,9 @@ function updateResetAllButton(selector: string | null) {
 }
 
 function findFieldContainer(input: HTMLElement) {
-  return input.closest('.qwikcss-card-field, .qwikcss-spacing-cell, .qwikcss-spacing-pad-cell')
+  return input.closest(
+    '.qwikcss-card-field, .qwikcss-spacing-cell, .qwikcss-spacing-pad-cell, .qwikcss-typography-field'
+  )
 }
 
 function getPropMeta(
@@ -892,41 +410,177 @@ function renderSpacingPanel(
 
   const input = (meta: ReturnType<typeof getPropMeta>, prop: string) => {
     const placeholder = meta.placeholder ? ` placeholder="${escapeHtml(meta.placeholder)}"` : ''
-    return `<input class="qwikcss-spacing-input" type="text" data-prop="${prop}" data-scrub="true" data-unit="${escapeHtml(
+    return `<input class="qwikcss-spacing-input qc-w-full qc-bg-transparent qc-text-center qc-text-[12px] qc-font-semibold qc-text-white/90 qc-outline-none qc-cursor-ew-resize focus:qc-cursor-text" type="text" data-prop="${prop}" data-scrub="true" data-unit="${escapeHtml(
       meta.unit
     )}" value="${escapeHtml(meta.value)}"${placeholder} />`
   }
 
   spacing.innerHTML = `
-    <div class="qwikcss-spacing-label">Margin</div>
-    <div class="qwikcss-spacing-grid">
-      <div class="qwikcss-spacing-cell qwikcss-spacing-top${mt.overridden ? ' is-overridden' : ''}">
+    <div class="qwikcss-spacing-label qc-mb-2 qc-text-[11px] qc-italic qc-text-[color:var(--qc-muted)]">Margin</div>
+    <div class="qwikcss-spacing-grid qc-grid qc-grid-cols-[minmax(0,1fr)_minmax(120px,1.1fr)_minmax(0,1fr)] qc-grid-rows-[auto_auto_auto] qc-gap-2 qc-items-center">
+      <div class="qwikcss-spacing-cell qwikcss-spacing-top qc-col-start-2 qc-row-start-1 qc-flex qc-items-center qc-justify-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-p-1.5${
+        mt.overridden ? ' is-overridden' : ''
+      }">
         ${input(mt, 'margin-top')}
       </div>
-      <div class="qwikcss-spacing-cell qwikcss-spacing-left${ml.overridden ? ' is-overridden' : ''}">
+      <div class="qwikcss-spacing-cell qwikcss-spacing-left qc-col-start-1 qc-row-start-2 qc-flex qc-items-center qc-justify-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-p-1.5${
+        ml.overridden ? ' is-overridden' : ''
+      }">
         ${input(ml, 'margin-left')}
       </div>
-      <div class="qwikcss-spacing-pad">
-        <div class="qwikcss-spacing-pad-cell qwikcss-pad-top${pt.overridden ? ' is-overridden' : ''}">
+      <div class="qwikcss-spacing-pad qc-col-start-2 qc-row-start-2 qc-grid qc-grid-cols-3 qc-grid-rows-3 qc-gap-1.5 qc-items-center qc-rounded-lg qc-border qc-border-emerald-200/40 qc-bg-emerald-200/10 qc-p-2">
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-top qc-col-start-2 qc-row-start-1 qc-flex qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-black/30 qc-p-1${
+          pt.overridden ? ' is-overridden' : ''
+        }">
           ${input(pt, 'padding-top')}
         </div>
-        <div class="qwikcss-spacing-pad-cell qwikcss-pad-left${pl.overridden ? ' is-overridden' : ''}">
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-left qc-col-start-1 qc-row-start-2 qc-flex qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-black/30 qc-p-1${
+          pl.overridden ? ' is-overridden' : ''
+        }">
           ${input(pl, 'padding-left')}
         </div>
-        <div class="pad-label">Padding</div>
-        <div class="qwikcss-spacing-pad-cell qwikcss-pad-right${pr.overridden ? ' is-overridden' : ''}">
+        <div class="pad-label qc-col-start-2 qc-row-start-2 qc-text-[11px] qc-italic qc-text-[color:var(--qc-muted)] qc-text-center">Padding</div>
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-right qc-col-start-3 qc-row-start-2 qc-flex qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-black/30 qc-p-1${
+          pr.overridden ? ' is-overridden' : ''
+        }">
           ${input(pr, 'padding-right')}
         </div>
-        <div class="qwikcss-spacing-pad-cell qwikcss-pad-bottom${pb.overridden ? ' is-overridden' : ''}">
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-bottom qc-col-start-2 qc-row-start-3 qc-flex qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-black/30 qc-p-1${
+          pb.overridden ? ' is-overridden' : ''
+        }">
           ${input(pb, 'padding-bottom')}
         </div>
       </div>
-      <div class="qwikcss-spacing-cell qwikcss-spacing-right${mr.overridden ? ' is-overridden' : ''}">
+      <div class="qwikcss-spacing-cell qwikcss-spacing-right qc-col-start-3 qc-row-start-2 qc-flex qc-items-center qc-justify-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-p-1.5${
+        mr.overridden ? ' is-overridden' : ''
+      }">
         ${input(mr, 'margin-right')}
       </div>
-      <div class="qwikcss-spacing-cell qwikcss-spacing-bottom${mb.overridden ? ' is-overridden' : ''}">
+      <div class="qwikcss-spacing-cell qwikcss-spacing-bottom qc-col-start-2 qc-row-start-3 qc-flex qc-items-center qc-justify-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-p-1.5${
+        mb.overridden ? ' is-overridden' : ''
+      }">
         ${input(mb, 'margin-bottom')}
       </div>
+    </div>
+  `
+}
+
+function renderTypographyPanel(
+  cs: CSSStyleDeclaration,
+  overrides: Record<string, string>,
+  selector: string | null
+) {
+  const panel = document.getElementById('__qwikcss_card_typography__')
+  if (!panel) return
+
+  const fontFamilyRaw = overrides['font-family'] ?? cs.getPropertyValue('font-family').trim()
+  const fontWeightRaw = overrides['font-weight'] ?? cs.getPropertyValue('font-weight').trim()
+  const fontWeightValue = normalizeComputedValue(fontWeightRaw)
+  const fontSize = getPropMeta('font-size', cs, overrides, selector)
+  const lineHeight = getPropMeta('line-height', cs, overrides, selector)
+  const letterSpacing = getPropMeta('letter-spacing', cs, overrides, selector)
+  const colorRaw = overrides.color ?? cs.getPropertyValue('color').trim()
+  const colorHex = normalizeColorValue(colorRaw)
+  const colorText = colorHex || colorRaw || '#ffffff'
+  const textAlign = (overrides['text-align'] ?? cs.getPropertyValue('text-align').trim() || 'left')
+    .toLowerCase()
+  const decoration =
+    (overrides['text-decoration-line'] ??
+      cs.getPropertyValue('text-decoration-line').trim() ||
+      cs.getPropertyValue('text-decoration').trim()) || ''
+  const underlineActive = decoration.toLowerCase().includes('underline')
+
+  const familyOverridden = selector ? hasInlineDecl(selector, 'font-family') : false
+  const weightOverridden = selector ? hasInlineDecl(selector, 'font-weight') : false
+  const colorOverridden = selector ? hasInlineDecl(selector, 'color') : false
+  const alignOverridden = selector ? hasInlineDecl(selector, 'text-align') : false
+  const underlineOverridden = selector ? hasInlineDecl(selector, 'text-decoration-line') : false
+
+  const fieldInput = (
+    label: string,
+    meta: ReturnType<typeof getPropMeta>,
+    prop: string,
+    extraClass = ''
+  ) => {
+    const placeholder = meta.placeholder ? ` placeholder="${escapeHtml(meta.placeholder)}"` : ''
+    return `
+      <div class="qwikcss-typography-field qc-flex qc-flex-col qc-gap-1 qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+        meta.overridden ? ' is-overridden' : ''
+      } ${extraClass}">
+        <span class="label qc-text-[10px] qc-uppercase qc-tracking-[0.2em] qc-text-[color:var(--qc-muted)]">${escapeHtml(
+          label
+        )}</span>
+        <input class="qc-bg-transparent qc-text-[12px] qc-font-semibold qc-text-white/90 qc-outline-none qc-cursor-ew-resize focus:qc-cursor-text" type="text" data-prop="${prop}" data-scrub="true" data-unit="${escapeHtml(
+          meta.unit
+        )}" value="${escapeHtml(meta.value)}"${placeholder} />
+      </div>
+    `
+  }
+
+  panel.innerHTML = `
+    <div class="qwikcss-typography-row qc-grid qc-grid-cols-1 qc-gap-2">
+      <div class="qwikcss-typography-field qc-flex qc-items-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+        familyOverridden ? ' is-overridden' : ''
+      }">
+        <select class="qwikcss-typography-select qc-w-full qc-bg-transparent qc-text-[12px] qc-text-white/90 qc-outline-none" data-prop="font-family">
+          ${renderFontOptions(fontFamilyRaw)}
+        </select>
+      </div>
+    </div>
+    <div class="qwikcss-typography-row qc-grid qc-grid-cols-[minmax(0,1fr)_auto_auto] qc-items-center qc-gap-2">
+      <div class="qwikcss-typography-field qc-flex qc-items-center qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+        weightOverridden ? ' is-overridden' : ''
+      }">
+        <select class="qwikcss-typography-select qc-w-full qc-bg-transparent qc-text-[12px] qc-text-white/90 qc-outline-none" data-prop="font-weight">
+          ${renderWeightOptions(fontWeightValue)}
+        </select>
+      </div>
+      ${fieldInput('A', fontSize, 'font-size')}
+      ${fieldInput('LH', lineHeight, 'line-height')}
+    </div>
+    <div class="qwikcss-typography-row qc-grid qc-grid-cols-[minmax(0,1fr)_auto] qc-items-center qc-gap-2">
+      <div class="qwikcss-typography-field qwikcss-typography-color qc-flex qc-items-center qc-gap-2 qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+        colorOverridden ? ' is-overridden' : ''
+      }">
+        <input class="qc-h-6 qc-w-6 qc-shrink-0 qc-rounded-full qc-border qc-border-white/20 qc-bg-transparent qc-p-0" type="color" data-prop="color" value="${escapeHtml(
+          colorHex || '#ffffff'
+        )}" />
+        <input class="qc-w-full qc-bg-transparent qc-text-[12px] qc-font-semibold qc-text-white/90 qc-outline-none" type="text" data-prop="color" value="${escapeHtml(
+          colorText
+        )}" />
+      </div>
+      ${fieldInput('LS', letterSpacing, 'letter-spacing')}
+    </div>
+    <div class="qwikcss-typography-row qc-grid qc-grid-cols-[minmax(0,1fr)_auto] qc-items-center qc-gap-2">
+      <div class="qwikcss-typography-buttons qc-flex qc-items-center qc-gap-1 qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+        alignOverridden ? ' is-overridden' : ''
+      }">
+        <button class="qwikcss-typography-btn qc-flex qc-h-7 qc-w-7 qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-white/5 qc-text-[11px] qc-font-semibold qc-text-white/80 qc-transition hover:qc-border-white/40 hover:qc-bg-white/15${
+          textAlign === 'left' ? ' is-active' : ''
+        }" type="button" data-action="text-align" data-value="left" aria-pressed="${
+          textAlign === 'left' ? 'true' : 'false'
+        }">L</button>
+        <button class="qwikcss-typography-btn qc-flex qc-h-7 qc-w-7 qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-white/5 qc-text-[11px] qc-font-semibold qc-text-white/80 qc-transition hover:qc-border-white/40 hover:qc-bg-white/15${
+          textAlign === 'center' ? ' is-active' : ''
+        }" type="button" data-action="text-align" data-value="center" aria-pressed="${
+          textAlign === 'center' ? 'true' : 'false'
+        }">C</button>
+        <button class="qwikcss-typography-btn qc-flex qc-h-7 qc-w-7 qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-white/5 qc-text-[11px] qc-font-semibold qc-text-white/80 qc-transition hover:qc-border-white/40 hover:qc-bg-white/15${
+          textAlign === 'right' ? ' is-active' : ''
+        }" type="button" data-action="text-align" data-value="right" aria-pressed="${
+          textAlign === 'right' ? 'true' : 'false'
+        }">R</button>
+        <button class="qwikcss-typography-btn qc-flex qc-h-7 qc-w-7 qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-white/5 qc-text-[11px] qc-font-semibold qc-text-white/80 qc-transition hover:qc-border-white/40 hover:qc-bg-white/15${
+          textAlign === 'justify' ? ' is-active' : ''
+        }" type="button" data-action="text-align" data-value="justify" aria-pressed="${
+          textAlign === 'justify' ? 'true' : 'false'
+        }">J</button>
+      </div>
+      <button class="qwikcss-typography-btn qc-flex qc-h-7 qc-w-7 qc-items-center qc-justify-center qc-rounded-md qc-border qc-border-white/10 qc-bg-white/5 qc-text-[11px] qc-font-semibold qc-text-white/80 qc-transition hover:qc-border-white/40 hover:qc-bg-white/15${
+        underlineActive ? ' is-active' : ''
+      }${underlineOverridden ? ' is-overridden' : ''}" type="button" data-action="toggle-underline" aria-pressed="${
+        underlineActive ? 'true' : 'false'
+      }">U</button>
     </div>
   `
 }
@@ -957,9 +611,13 @@ function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
     const dataAttr =
       field.kind === 'transform' ? `data-field="${field.key}"` : `data-prop="${field.prop}"`
     return `
-      <div class="qwikcss-card-field${overridden ? ' is-overridden' : ''}">
-        <span class="label">${escapeHtml(field.label)}</span>
-        <input class="qwikcss-card-input" type="text" ${dataAttr} data-scrub="true" data-unit="${
+      <div class="qwikcss-card-field qc-flex qc-flex-col qc-gap-1.5 qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-p-2${
+        overridden ? ' is-overridden' : ''
+      }">
+        <span class="label qc-text-[10px] qc-uppercase qc-tracking-[0.2em] qc-text-[color:var(--qc-muted)]">${escapeHtml(
+          field.label
+        )}</span>
+        <input class="qwikcss-card-input qc-bg-transparent qc-text-[13px] qc-font-semibold qc-text-white/90 qc-outline-none qc-cursor-ew-resize focus:qc-cursor-text" type="text" ${dataAttr} data-scrub="true" data-unit="${
           field.unit
         }" value="${escapeHtml(value)}" />
       </div>
@@ -967,6 +625,7 @@ function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
   }).join('')
 
   renderSpacingPanel(cs, overrides, selector)
+  renderTypographyPanel(cs, overrides, selector)
   updateResetAllButton(selector)
 }
 
@@ -979,7 +638,7 @@ function applyPropValue(
   selector: string,
   prop: string,
   raw: string,
-  input: HTMLInputElement,
+  input: HTMLInputElement | HTMLSelectElement,
   commit: boolean
 ) {
   const value = raw.trim()
@@ -1107,7 +766,6 @@ function handleCardInput(ev: Event) {
   if (!state.cardEditing) return
   const target = ev.target
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return
-  if (target instanceof HTMLSelectElement) return
   const prop = target.getAttribute('data-prop')
   const field = target.getAttribute('data-field') as 'x' | 'y' | 'rotate' | null
   const selector = state.currentSelector
@@ -1116,10 +774,25 @@ function handleCardInput(ev: Event) {
   const commit = ev.type === 'change'
 
   if (field) {
-    applyTransformValue(selector, field, raw, target, commit)
+    if (target instanceof HTMLInputElement) {
+      applyTransformValue(selector, field, raw, target, commit)
+    }
     return
   }
   if (!prop) return
+  if (target instanceof HTMLInputElement && prop === 'color') {
+    const container = target.closest('.qwikcss-typography-color')
+    if (container) {
+      if (target.type === 'color') {
+        const textInput = container.querySelector<HTMLInputElement>('input[type="text"][data-prop="color"]')
+        if (textInput) textInput.value = target.value
+      } else {
+        const colorValue = normalizeColorValue(target.value)
+        const colorInput = container.querySelector<HTMLInputElement>('input[type="color"][data-prop="color"]')
+        if (colorInput && colorValue) colorInput.value = colorValue
+      }
+    }
+  }
   applyPropValue(selector, prop, raw, target, commit)
 }
 
@@ -1139,6 +812,38 @@ function handleCardClick(ev: MouseEvent) {
       if (state.currentElement) updateHoverCard(state.currentElement)
       return
     }
+  }
+
+  const alignBtn = target.closest<HTMLElement>('[data-action="text-align"]')
+  if (alignBtn) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const selector = state.currentSelector
+    const value = alignBtn.getAttribute('data-value')
+    if (!selector || !value) return
+    applyInlineDecl(selector, 'text-align', value)
+    const el = state.currentElement || state.lastHover
+    if (el) updateHoverCard(el)
+    return
+  }
+
+  const underlineBtn = target.closest<HTMLElement>('[data-action="toggle-underline"]')
+  if (underlineBtn) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const selector = state.currentSelector
+    if (!selector) return
+    const cs = state.currentElement ? getComputedStyle(state.currentElement) : null
+    const current =
+      (selector && getInlineDecls(selector)['text-decoration-line']) ||
+      cs?.getPropertyValue('text-decoration-line').trim() ||
+      cs?.getPropertyValue('text-decoration').trim() ||
+      ''
+    const next = current.toLowerCase().includes('underline') ? 'none' : 'underline'
+    applyInlineDecl(selector, 'text-decoration-line', next)
+    const el = state.currentElement || state.lastHover
+    if (el) updateHoverCard(el)
+    return
   }
 
   const sectionBtn = target.closest<HTMLElement>('.qwikcss-card-section')
@@ -1266,7 +971,9 @@ export function updateHoverCard(el: Element) {
     crumbs.innerHTML = path
       .map((item, index) => {
         const cls =
-          index === path.length - 1 ? 'qwikcss-card-crumb is-current' : 'qwikcss-card-crumb'
+          index === path.length - 1
+            ? 'qwikcss-card-crumb is-current qc-relative qc-pl-4 qc-text-[11px] qc-tracking-[0.06em] qc-text-[color:var(--qc-muted)] qc-whitespace-nowrap qc-overflow-hidden qc-text-ellipsis'
+            : 'qwikcss-card-crumb qc-relative qc-pl-4 qc-text-[11px] qc-tracking-[0.06em] qc-text-[color:var(--qc-muted)] qc-whitespace-nowrap qc-overflow-hidden qc-text-ellipsis'
         const pad = index * 10
         return `<div class="${cls}" style="margin-left:${pad}px">${escapeHtml(item)}</div>`
       })
@@ -1287,10 +994,10 @@ export function updateHoverCard(el: Element) {
         value !== 'rgba(0, 0, 0, 0)' &&
         value !== 'rgba(0,0,0,0)'
       const swatch = showSwatch
-        ? `<span class="swatch" style="background:${safeValue}"></span>`
+        ? `<span class="swatch qc-h-2.5 qc-w-2.5 qc-rounded qc-border qc-border-white/40 qc-shadow-[inset_0_0_0_1px_rgba(0,0,0,0.2)] qc-flex-shrink-0" style="background:${safeValue}"></span>`
         : ''
       rows.push(
-        `<div class="qwikcss-card-prop"><span class="k">${prop}</span><span class="v">${swatch}${safeValue}</span></div>`
+        `<div class="qwikcss-card-prop qc-flex qc-items-start qc-justify-between qc-gap-2 qc-rounded-lg qc-border qc-border-white/5 qc-bg-white/5 qc-px-2 qc-py-1.5"><span class="k qc-text-[13px] qc-tracking-[0.05em] qc-text-[color:var(--qc-accent)]">${prop}</span><span class="v qc-inline-flex qc-items-center qc-justify-end qc-gap-1.5 qc-text-[13px] qc-text-white/90 qc-text-right">${swatch}${safeValue}</span></div>`
       )
     }
     props.innerHTML = rows.join('')
