@@ -357,11 +357,153 @@ function ensureQwikCSSResetStyle() {
       font-size: 12px;
       cursor: pointer;
     }
+    #${CARD_ID} .qwikcss-card-section .chev {
+      transition: transform 160ms ease;
+    }
     #${CARD_ID} .qwikcss-card-section.is-open {
       color: #7cffad;
     }
     #${CARD_ID} .qwikcss-card-section .chev {
       color: var(--card-muted);
+    }
+    #${CARD_ID} .qwikcss-card-section.is-open .chev {
+      transform: rotate(90deg);
+    }
+    #${CARD_ID} .qwikcss-card-section-panel {
+      display: none;
+      padding: 8px 0 6px;
+    }
+    #${CARD_ID}[data-section-open='spacing']
+      .qwikcss-card-section-panel[data-section='spacing'] {
+      display: block;
+    }
+    #${CARD_ID} .qwikcss-card-spacing {
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 10px;
+      background: rgba(10, 10, 14, 0.7);
+    }
+    #${CARD_ID} .qwikcss-spacing-label {
+      font-size: 11px;
+      color: var(--card-muted);
+      font-style: italic;
+      margin-bottom: 6px;
+    }
+    #${CARD_ID} .qwikcss-spacing-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(120px, 1.1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+    #${CARD_ID} .qwikcss-spacing-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    #${CARD_ID} .qwikcss-spacing-cell.is-overridden {
+      border-color: rgba(124, 255, 173, 0.45);
+      background: rgba(124, 255, 173, 0.12);
+    }
+    #${CARD_ID} .qwikcss-spacing-cell input {
+      width: 100%;
+      text-align: center;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--card-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: ew-resize;
+    }
+    #${CARD_ID} .qwikcss-spacing-cell input:focus {
+      outline: none;
+      cursor: text;
+    }
+    #${CARD_ID} .qwikcss-spacing-pad {
+      grid-column: 2;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, auto);
+      gap: 6px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(124, 255, 173, 0.35);
+      background: rgba(124, 255, 173, 0.08);
+    }
+    #${CARD_ID} .qwikcss-spacing-pad-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(10, 10, 14, 0.4);
+    }
+    #${CARD_ID} .qwikcss-spacing-pad-cell.is-overridden {
+      border-color: rgba(124, 255, 173, 0.45);
+      background: rgba(124, 255, 173, 0.16);
+    }
+    #${CARD_ID} .qwikcss-spacing-pad .pad-label {
+      grid-column: 2;
+      grid-row: 2;
+      font-size: 11px;
+      color: var(--card-muted);
+      font-style: italic;
+      text-align: center;
+    }
+    #${CARD_ID} .qwikcss-spacing-pad input {
+      width: 100%;
+      text-align: center;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--card-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: ew-resize;
+    }
+    #${CARD_ID} .qwikcss-spacing-pad input:focus {
+      outline: none;
+      cursor: text;
+    }
+    #${CARD_ID} .qwikcss-spacing-top {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    #${CARD_ID} .qwikcss-spacing-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    #${CARD_ID} .qwikcss-spacing-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+    #${CARD_ID} .qwikcss-spacing-bottom {
+      grid-column: 2;
+      grid-row: 3;
+    }
+    #${CARD_ID} .qwikcss-pad-top {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    #${CARD_ID} .qwikcss-pad-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    #${CARD_ID} .qwikcss-pad-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+    #${CARD_ID} .qwikcss-pad-bottom {
+      grid-column: 2;
+      grid-row: 3;
     }
     #${CARD_ID} .qwikcss-card-edit-actions {
       display: flex;
@@ -492,9 +634,12 @@ function ensureHoverCard() {
       </button>
       <div class="qwikcss-card-geom" id="__qwikcss_card_geom__"></div>
       <div class="qwikcss-card-section-list">
-        <button class="qwikcss-card-section" type="button">
+        <button class="qwikcss-card-section" type="button" data-section="spacing">
           Spacing <span class="chev">></span>
         </button>
+        <div class="qwikcss-card-section-panel" data-section="spacing">
+          <div class="qwikcss-card-spacing" id="__qwikcss_card_spacing__"></div>
+        </div>
         <button class="qwikcss-card-section" type="button">
           Typography <span class="chev">></span>
         </button>
@@ -507,8 +652,8 @@ function ensureHoverCard() {
         <button class="qwikcss-card-section" type="button">
           Border <span class="chev">></span>
         </button>
-        <button class="qwikcss-card-section is-open" type="button">
-          Positioning <span class="chev">v</span>
+        <button class="qwikcss-card-section" type="button">
+          Positioning <span class="chev">></span>
         </button>
       </div>
       <div class="qwikcss-card-edit-actions">
@@ -557,12 +702,25 @@ function ensureHoverCard() {
 
 let pinnedCheckTimer: number | null = null
 let overlayRaf: number | null = null
+let openSection: string | null = null
 
 function setCardMode(editing: boolean) {
   const card = document.getElementById(CARD_ID) as HTMLDivElement | null
   if (!card) return
   card.dataset.mode = editing ? 'edit' : 'inspect'
   card.style.width = editing ? '360px' : '320px'
+}
+
+function setOpenSection(section: string | null) {
+  openSection = section
+  const card = document.getElementById(CARD_ID) as HTMLDivElement | null
+  if (!card) return
+  if (section) card.dataset.sectionOpen = section
+  else delete card.dataset.sectionOpen
+  card.querySelectorAll<HTMLElement>('.qwikcss-card-section').forEach((btn) => {
+    const active = btn.dataset.section === section
+    btn.classList.toggle('is-open', active)
+  })
 }
 
 function queueOverlayUpdate() {
@@ -610,6 +768,13 @@ function normalizeComputedValue(value: string) {
   const match = trimmed.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i)
   if (!match) return trimmed
   return `${formatNumber(Number(match[1]))}${match[2] || ''}`
+}
+
+function getUnitFromValue(value: string, fallback = 'px') {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^-?\d+(?:\.\d+)?([a-z%]*)$/i)
+  if (!match) return fallback
+  return match[1] || fallback
 }
 
 function parseTransform(value: string): TransformParts {
@@ -679,6 +844,83 @@ function updateResetAllButton(selector: string | null) {
   btn.disabled = Object.keys(getInlineDecls(selector)).length === 0
 }
 
+function findFieldContainer(input: HTMLElement) {
+  return input.closest('.qwikcss-card-field, .qwikcss-spacing-cell, .qwikcss-spacing-pad-cell')
+}
+
+function getPropMeta(
+  prop: string,
+  cs: CSSStyleDeclaration,
+  overrides: Record<string, string>,
+  selector: string | null
+) {
+  const computedRaw = cs.getPropertyValue(prop).trim()
+  const overrideRaw = selector ? overrides[prop] : undefined
+  const value = normalizeComputedValue(overrideRaw ?? computedRaw)
+  const placeholder = overrideRaw ? normalizeComputedValue(computedRaw) : ''
+  const unit = getUnitFromValue(value, getUnitFromValue(computedRaw, 'px'))
+  const overridden = selector ? hasInlineDecl(selector, prop) : false
+  return { value, placeholder, unit, overridden }
+}
+
+function renderSpacingPanel(
+  cs: CSSStyleDeclaration,
+  overrides: Record<string, string>,
+  selector: string | null
+) {
+  const spacing = document.getElementById('__qwikcss_card_spacing__')
+  if (!spacing) return
+
+  const mt = getPropMeta('margin-top', cs, overrides, selector)
+  const mr = getPropMeta('margin-right', cs, overrides, selector)
+  const mb = getPropMeta('margin-bottom', cs, overrides, selector)
+  const ml = getPropMeta('margin-left', cs, overrides, selector)
+  const pt = getPropMeta('padding-top', cs, overrides, selector)
+  const pr = getPropMeta('padding-right', cs, overrides, selector)
+  const pb = getPropMeta('padding-bottom', cs, overrides, selector)
+  const pl = getPropMeta('padding-left', cs, overrides, selector)
+
+  const input = (meta: ReturnType<typeof getPropMeta>, prop: string) => {
+    const placeholder = meta.placeholder ? ` placeholder="${escapeHtml(meta.placeholder)}"` : ''
+    return `<input class="qwikcss-spacing-input" type="text" data-prop="${prop}" data-scrub="true" data-unit="${escapeHtml(
+      meta.unit
+    )}" value="${escapeHtml(meta.value)}"${placeholder} />`
+  }
+
+  spacing.innerHTML = `
+    <div class="qwikcss-spacing-label">Margin</div>
+    <div class="qwikcss-spacing-grid">
+      <div class="qwikcss-spacing-cell qwikcss-spacing-top${mt.overridden ? ' is-overridden' : ''}">
+        ${input(mt, 'margin-top')}
+      </div>
+      <div class="qwikcss-spacing-cell qwikcss-spacing-left${ml.overridden ? ' is-overridden' : ''}">
+        ${input(ml, 'margin-left')}
+      </div>
+      <div class="qwikcss-spacing-pad">
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-top${pt.overridden ? ' is-overridden' : ''}">
+          ${input(pt, 'padding-top')}
+        </div>
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-left${pl.overridden ? ' is-overridden' : ''}">
+          ${input(pl, 'padding-left')}
+        </div>
+        <div class="pad-label">Padding</div>
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-right${pr.overridden ? ' is-overridden' : ''}">
+          ${input(pr, 'padding-right')}
+        </div>
+        <div class="qwikcss-spacing-pad-cell qwikcss-pad-bottom${pb.overridden ? ' is-overridden' : ''}">
+          ${input(pb, 'padding-bottom')}
+        </div>
+      </div>
+      <div class="qwikcss-spacing-cell qwikcss-spacing-right${mr.overridden ? ' is-overridden' : ''}">
+        ${input(mr, 'margin-right')}
+      </div>
+      <div class="qwikcss-spacing-cell qwikcss-spacing-bottom${mb.overridden ? ' is-overridden' : ''}">
+        ${input(mb, 'margin-bottom')}
+      </div>
+    </div>
+  `
+}
+
 function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
   const geom = document.getElementById('__qwikcss_card_geom__')
   if (!geom) return
@@ -714,6 +956,7 @@ function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
     `
   }).join('')
 
+  renderSpacingPanel(cs, overrides, selector)
   updateResetAllButton(selector)
 }
 
@@ -732,7 +975,7 @@ function applyPropValue(
   const value = raw.trim()
   if (!value) {
     removeInlineDecl(selector, prop)
-    updateFieldState(input.closest('.qwikcss-card-field'), false)
+    updateFieldState(findFieldContainer(input), false)
     updateResetAllButton(selector)
     queueOverlayUpdate()
     return
@@ -741,7 +984,7 @@ function applyPropValue(
   const normalized = normalizeInlineValue(prop, value)
   if (commit && normalized && normalized !== value) input.value = normalized
   applyInlineDecl(selector, prop, normalized)
-  updateFieldState(input.closest('.qwikcss-card-field'), true)
+  updateFieldState(findFieldContainer(input), true)
   updateResetAllButton(selector)
   queueOverlayUpdate()
 }
@@ -760,7 +1003,7 @@ function applyTransformValue(
   if (field === 'y') parts.y = normalized
   if (field === 'rotate') parts.r = normalized
   setTransformParts(selector, parts)
-  updateFieldState(input.closest('.qwikcss-card-field'), true)
+  updateFieldState(findFieldContainer(input), true)
   updateResetAllButton(selector)
   queueOverlayUpdate()
 }
@@ -888,6 +1131,15 @@ function handleCardClick(ev: MouseEvent) {
     }
   }
 
+  const sectionBtn = target.closest<HTMLElement>('.qwikcss-card-section')
+  if (sectionBtn) {
+    ev.preventDefault()
+    ev.stopPropagation()
+    const section = sectionBtn.dataset.section || null
+    setOpenSection(openSection === section ? null : section)
+    return
+  }
+
   if (state.cardEditing) return
   if (target.closest('input, select, button, a')) return
   const hoverEl = state.lastHover || state.currentElement
@@ -922,6 +1174,7 @@ function exitEdit(opts: { hide?: boolean } = {}) {
   stopScrub()
   state.cardEditing = false
   stopPinnedCheck()
+  setOpenSection(null)
   setPaused(false)
   notifyState()
   if (opts.hide) {
