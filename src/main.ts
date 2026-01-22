@@ -44,8 +44,6 @@ function boot() {
     onTogglePause: handleTogglePause,
     onTogglePicking: handleTogglePicking,
   })
-
-  startPicking()
 }
 
 boot()
