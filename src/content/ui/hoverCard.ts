@@ -482,12 +482,11 @@ function renderTypographyPanel(
   const colorRaw = overrides.color ?? cs.getPropertyValue('color').trim()
   const colorHex = normalizeColorValue(colorRaw)
   const colorText = colorHex || colorRaw || '#ffffff'
-  const textAlign = (overrides['text-align'] ?? cs.getPropertyValue('text-align').trim() || 'left')
-    .toLowerCase()
-  const decoration =
-    (overrides['text-decoration-line'] ??
-      cs.getPropertyValue('text-decoration-line').trim() ||
-      cs.getPropertyValue('text-decoration').trim()) || ''
+  const textAlignRaw = overrides['text-align'] ?? cs.getPropertyValue('text-align').trim()
+  const textAlign = (textAlignRaw || 'left').toLowerCase()
+  const decorationLine =
+    overrides['text-decoration-line'] ?? cs.getPropertyValue('text-decoration-line').trim()
+  const decoration = decorationLine || cs.getPropertyValue('text-decoration').trim() || ''
   const underlineActive = decoration.toLowerCase().includes('underline')
 
   const familyOverridden = selector ? hasInlineDecl(selector, 'font-family') : false
