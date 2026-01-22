@@ -8,6 +8,7 @@ export const state = {
   currentElement: null as Element | null,
   saveTimer: null as number | null,
   cardPinned: false,
+  cardEditing: false,
   dragging: false,
   dragOffsetX: 0,
   dragOffsetY: 0,

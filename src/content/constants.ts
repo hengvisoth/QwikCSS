@@ -7,6 +7,7 @@ export const OVERLAY_ID = '__qwikcss_overlay__'
 export const LABEL_ID = '__qwikcss_label__'
 
 export const STYLE_ID = '__qwikcss_style__'
+export const INLINE_STYLE_ID = '__qwikcss_inline_style__'
 export const STORAGE_KEY = `qwikcss:${location.host}`
 
 export const TOOLBAR_ID = '__qwikcss_toolbar__'

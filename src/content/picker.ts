@@ -15,14 +15,22 @@ function getElementFromPoint(x: number, y: number) {
   return el
 }
 
-function onMouseMove(ev: MouseEvent) {
+let hoverRaf: number | null = null
+let pendingHover: { x: number; y: number } | null = null
+
+function processHoverMove() {
+  hoverRaf = null
   if (!state.picking) return
   if (state.inspectPaused) return
+  if (!pendingHover) return
 
-  const raw = document.elementFromPoint(ev.clientX, ev.clientY)
+  const { x, y } = pendingHover
+  pendingHover = null
+
+  const raw = document.elementFromPoint(x, y)
   if (raw && isInsideQwikCSSUI(raw)) return
 
-  const el = getElementFromPoint(ev.clientX, ev.clientY)
+  const el = getElementFromPoint(x, y)
   if (!el) {
     state.lastHover = null
     hideOverlay()
@@ -35,6 +43,14 @@ function onMouseMove(ev: MouseEvent) {
     positionOverlay(el)
     updateHoverCard(el)
   }
+}
+
+function onMouseMove(ev: MouseEvent) {
+  if (!state.picking) return
+  if (state.inspectPaused) return
+  pendingHover = { x: ev.clientX, y: ev.clientY }
+  if (hoverRaf) return
+  hoverRaf = window.requestAnimationFrame(processHoverMove)
 }
 
 function onClick(ev: MouseEvent) {
@@ -89,6 +105,9 @@ export function stopPicking() {
   state.picking = false
   setPaused(false)
   state.lastHover = null
+  if (hoverRaf) window.cancelAnimationFrame(hoverRaf)
+  hoverRaf = null
+  pendingHover = null
 
   hideOverlay()
   hideCard()
