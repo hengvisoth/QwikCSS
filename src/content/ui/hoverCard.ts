@@ -14,41 +14,31 @@ import { state } from '../state'
 import { describeElement, escapeHtml, formatNumber, getElementPath, isTrivialValue } from '../utils'
 import { hideOverlay, positionOverlay } from './overlay'
 
-const EDIT_PROPS = [
-  'display',
-  'position',
-  'width',
-  'height',
-  'margin-top',
-  'margin-right',
-  'margin-bottom',
-  'margin-left',
-  'padding-top',
-  'padding-right',
-  'padding-bottom',
-  'padding-left',
-  'font-size',
-  'font-weight',
-] as const
-
-const FLEX_PROPS = ['align-items', 'justify-content', 'gap'] as const
-
-const SELECT_OPTIONS: Record<string, string[]> = {
-  display: [
-    'block',
-    'inline',
-    'inline-block',
-    'flex',
-    'inline-flex',
-    'grid',
-    'inline-grid',
-    'none',
-    'contents',
-  ],
-  position: ['static', 'relative', 'absolute', 'fixed', 'sticky'],
+type GeomField = {
+  key: 'x' | 'y' | 'rotate' | 'width' | 'height' | 'radius'
+  label: string
+  kind: 'transform' | 'prop'
+  prop?: string
+  unit: string
 }
 
+const GEOM_FIELDS: GeomField[] = [
+  { key: 'x', label: 'X', kind: 'transform', unit: 'px' },
+  { key: 'y', label: 'Y', kind: 'transform', unit: 'px' },
+  { key: 'rotate', label: 'ROT', kind: 'transform', unit: 'deg' },
+  { key: 'width', label: 'W', kind: 'prop', prop: 'width', unit: 'px' },
+  { key: 'height', label: 'H', kind: 'prop', prop: 'height', unit: 'px' },
+  { key: 'radius', label: 'R', kind: 'prop', prop: 'border-radius', unit: 'px' },
+]
+
+type TransformParts = { x: string; y: string; r: string }
+
+const transformStore: Record<string, TransformParts> = {}
+
 const AUTO_PX_PROPS = new Set([
+  'width',
+  'height',
+  'border-radius',
   'margin-top',
   'margin-right',
   'margin-bottom',
@@ -243,10 +233,135 @@ function ensureQwikCSSResetStyle() {
     #${CARD_ID} .qwikcss-card-edit {
       display: none;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
     #${CARD_ID}[data-mode='edit'] .qwikcss-card-edit {
       display: flex;
+    }
+    #${CARD_ID} .qwikcss-card-tabs {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #${CARD_ID} .qwikcss-card-tab {
+      position: relative;
+      background: transparent;
+      border: 0;
+      color: var(--card-muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0 0 6px;
+    }
+    #${CARD_ID} .qwikcss-card-tab.is-active {
+      color: var(--card-text);
+    }
+    #${CARD_ID} .qwikcss-card-tab.is-active::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--card-accent);
+    }
+    #${CARD_ID} .qwikcss-card-badge {
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fff;
+      background: #ff5f5f;
+    }
+    #${CARD_ID} .qwikcss-card-select {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--card-text);
+      cursor: pointer;
+    }
+    #${CARD_ID} .qwikcss-card-select .label {
+      color: var(--card-muted);
+      font-size: 11px;
+    }
+    #${CARD_ID} .qwikcss-card-select .value {
+      font-weight: 600;
+      color: #ff8ad4;
+    }
+    #${CARD_ID} .qwikcss-card-select .value.accent {
+      color: #7cffad;
+    }
+    #${CARD_ID} .qwikcss-card-select .chev {
+      color: var(--card-muted);
+    }
+    #${CARD_ID} .qwikcss-card-geom {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    #${CARD_ID} .qwikcss-card-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    #${CARD_ID} .qwikcss-card-field.is-overridden {
+      border-color: rgba(124, 255, 173, 0.45);
+      background: rgba(124, 255, 173, 0.12);
+    }
+    #${CARD_ID} .qwikcss-card-field .label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--card-muted);
+    }
+    #${CARD_ID} .qwikcss-card-field input {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--card-text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: ew-resize;
+    }
+    #${CARD_ID} .qwikcss-card-field input:focus {
+      outline: none;
+      cursor: text;
+    }
+    #${CARD_ID} .qwikcss-card-section-list {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #${CARD_ID} .qwikcss-card-section {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 4px;
+      border: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      background: transparent;
+      color: rgba(124, 255, 173, 0.7);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #${CARD_ID} .qwikcss-card-section.is-open {
+      color: #7cffad;
+    }
+    #${CARD_ID} .qwikcss-card-section .chev {
+      color: var(--card-muted);
     }
     #${CARD_ID} .qwikcss-card-edit-actions {
       display: flex;
@@ -276,72 +391,6 @@ function ensureQwikCSSResetStyle() {
     #${CARD_ID} .qwikcss-card-hint {
       font-size: 10px;
       color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-edit-props {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 260px;
-      overflow: auto;
-      padding-right: 4px;
-    }
-    #${CARD_ID} .qwikcss-card-edit-props::-webkit-scrollbar {
-      width: 6px;
-    }
-    #${CARD_ID} .qwikcss-card-edit-props::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 999px;
-    }
-    #${CARD_ID} .qwikcss-card-edit-row {
-      display: grid;
-      grid-template-columns: minmax(110px, 1fr) minmax(0, 1.5fr) auto;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.04);
-    }
-    #${CARD_ID} .qwikcss-card-edit-row.is-overridden {
-      border-color: rgba(124, 255, 173, 0.45);
-      background: rgba(124, 255, 173, 0.12);
-    }
-    #${CARD_ID} .qwikcss-card-edit-row .label {
-      color: var(--card-accent);
-      font-size: 11px;
-      letter-spacing: 0.03em;
-    }
-    #${CARD_ID} .qwikcss-card-input,
-    #${CARD_ID} .qwikcss-card-select {
-      width: 100%;
-      padding: 4px 6px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(12, 13, 16, 0.75);
-      color: var(--card-text);
-      font-size: 12px;
-    }
-    #${CARD_ID} .qwikcss-card-input::placeholder {
-      color: var(--card-muted);
-    }
-    #${CARD_ID} .qwikcss-card-reset {
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.06);
-      color: inherit;
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      cursor: pointer;
-    }
-    #${CARD_ID} .qwikcss-card-reset:hover {
-      border-color: rgba(255, 255, 255, 0.32);
-      background: rgba(255, 255, 255, 0.12);
-    }
-    #${CARD_ID} .qwikcss-card-reset:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
     }
     #${CARD_ID} input,
     #${CARD_ID} select {
@@ -423,11 +472,49 @@ function ensureHoverCard() {
     </div>
     <div class="qwikcss-card-props" id="__qwikcss_card_props__"></div>
     <div class="qwikcss-card-edit" id="__qwikcss_card_edit__">
+      <div class="qwikcss-card-tabs">
+        <button class="qwikcss-card-tab is-active" type="button">Design</button>
+        <button class="qwikcss-card-tab" type="button">Code</button>
+        <button class="qwikcss-card-tab" type="button">HTML</button>
+        <button class="qwikcss-card-tab" type="button">
+          Chat <span class="qwikcss-card-badge">NEW</span>
+        </button>
+      </div>
+      <button class="qwikcss-card-select" type="button">
+        <span class="label">Media:</span>
+        <span class="value">Auto - None</span>
+        <span class="chev">v</span>
+      </button>
+      <button class="qwikcss-card-select" type="button">
+        <span class="label">State or pseudo</span>
+        <span class="value accent">None</span>
+        <span class="chev">v</span>
+      </button>
+      <div class="qwikcss-card-geom" id="__qwikcss_card_geom__"></div>
+      <div class="qwikcss-card-section-list">
+        <button class="qwikcss-card-section" type="button">
+          Spacing <span class="chev">></span>
+        </button>
+        <button class="qwikcss-card-section" type="button">
+          Typography <span class="chev">></span>
+        </button>
+        <button class="qwikcss-card-section" type="button">
+          Background <span class="chev">></span>
+        </button>
+        <button class="qwikcss-card-section" type="button">
+          Display <span class="chev">></span>
+        </button>
+        <button class="qwikcss-card-section" type="button">
+          Border <span class="chev">></span>
+        </button>
+        <button class="qwikcss-card-section is-open" type="button">
+          Positioning <span class="chev">v</span>
+        </button>
+      </div>
       <div class="qwikcss-card-edit-actions">
         <button class="qwikcss-card-btn" type="button" data-action="reset-all">Reset all</button>
         <span class="qwikcss-card-hint">Close edit to resume inspect</span>
       </div>
-      <div class="qwikcss-card-edit-props" id="__qwikcss_card_edit_props__"></div>
     </div>
   `
 
@@ -438,6 +525,7 @@ function ensureHoverCard() {
   card.addEventListener('click', handleCardClick)
   card.addEventListener('input', handleCardInput)
   card.addEventListener('change', handleCardInput)
+  card.addEventListener('mousedown', handleScrubStart, true)
 
   handle.addEventListener('mousedown', (ev) => {
     state.dragging = true
@@ -508,11 +596,6 @@ function stopPinnedCheck() {
   pinnedCheckTimer = null
 }
 
-function shouldShowFlex(cs: CSSStyleDeclaration, overrides: Record<string, string>) {
-  const display = (overrides.display || cs.display || '').toLowerCase()
-  return display.includes('flex')
-}
-
 function normalizeInlineValue(prop: string, raw: string) {
   const value = raw.trim()
   if (!value) return ''
@@ -521,18 +604,68 @@ function normalizeInlineValue(prop: string, raw: string) {
   return `${value}px`
 }
 
-function renderSelectOptions(options: string[], current: string) {
-  const value = current.trim()
-  const list = options.slice()
-  if (value && !list.includes(value)) list.unshift(value)
-  if (!value) list.unshift('')
-  return list
-    .map((opt) => {
-      const label = opt || '-'
-      const selected = opt === value ? ' selected' : ''
-      return `<option value="${escapeHtml(opt)}"${selected}>${escapeHtml(label)}</option>`
-    })
-    .join('')
+function normalizeComputedValue(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return '0'
+  const match = trimmed.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i)
+  if (!match) return trimmed
+  return `${formatNumber(Number(match[1]))}${match[2] || ''}`
+}
+
+function parseTransform(value: string): TransformParts {
+  const fallback = { x: '0px', y: '0px', r: '0deg' }
+  if (!value || value === 'none') return fallback
+  const matrixMatch = value.match(/^matrix\(([^)]+)\)$/)
+  if (matrixMatch) {
+    const parts = matrixMatch[1].split(',').map((v) => Number.parseFloat(v.trim()))
+    if (parts.length === 6 && parts.every((v) => !Number.isNaN(v))) {
+      const [a, b, _c, _d, tx, ty] = parts
+      const angle = (Math.atan2(b, a) * 180) / Math.PI
+      return {
+        x: `${formatNumber(tx)}px`,
+        y: `${formatNumber(ty)}px`,
+        r: `${formatNumber(angle)}deg`,
+      }
+    }
+  }
+  const matrix3dMatch = value.match(/^matrix3d\(([^)]+)\)$/)
+  if (matrix3dMatch) {
+    const parts = matrix3dMatch[1].split(',').map((v) => Number.parseFloat(v.trim()))
+    if (parts.length === 16 && parts.every((v) => !Number.isNaN(v))) {
+      const tx = parts[12]
+      const ty = parts[13]
+      const angle = (Math.atan2(parts[1], parts[0]) * 180) / Math.PI
+      return {
+        x: `${formatNumber(tx)}px`,
+        y: `${formatNumber(ty)}px`,
+        r: `${formatNumber(angle)}deg`,
+      }
+    }
+  }
+  return fallback
+}
+
+function normalizeTransformValue(field: 'x' | 'y' | 'rotate', raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return field === 'rotate' ? '0deg' : '0px'
+  const match = trimmed.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i)
+  if (!match) return trimmed
+  const unit = match[2] || (field === 'rotate' ? 'deg' : 'px')
+  return `${formatNumber(Number(match[1]))}${unit}`
+}
+
+function getTransformParts(selector: string | null, el: Element | null) {
+  if (!selector) return { x: '0px', y: '0px', r: '0deg' }
+  if (transformStore[selector]) return transformStore[selector]
+  if (!el) return { x: '0px', y: '0px', r: '0deg' }
+  const parts = parseTransform(getComputedStyle(el).transform)
+  transformStore[selector] = parts
+  return parts
+}
+
+function setTransformParts(selector: string, parts: TransformParts) {
+  transformStore[selector] = parts
+  applyInlineDecl(selector, 'transform', `translate(${parts.x}, ${parts.y}) rotate(${parts.r})`)
 }
 
 function updateResetAllButton(selector: string | null) {
@@ -546,83 +679,195 @@ function updateResetAllButton(selector: string | null) {
   btn.disabled = Object.keys(getInlineDecls(selector)).length === 0
 }
 
-function renderEditProps(el: Element, cs: CSSStyleDeclaration) {
-  const props = document.getElementById('__qwikcss_card_edit_props__')
-  if (!props) return
+function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
+  const geom = document.getElementById('__qwikcss_card_geom__')
+  if (!geom) return
   const selector = state.currentSelector || buildSelector(el)
   if (!state.currentSelector) state.currentSelector = selector
   const overrides = selector ? getInlineDecls(selector) : {}
-  const showFlex = shouldShowFlex(cs, overrides)
-  const editProps = showFlex ? [...EDIT_PROPS, ...FLEX_PROPS] : [...EDIT_PROPS]
+  const transform = selector ? getTransformParts(selector, el) : { x: '0px', y: '0px', r: '0deg' }
+  const transformOverridden = selector ? hasInlineDecl(selector, 'transform') : false
 
-  props.innerHTML = editProps
-    .map((prop) => {
-      const computed = cs.getPropertyValue(prop).trim()
-      const override = selector ? overrides[prop] : undefined
-      const value = override ?? computed
-      const placeholder = override ? computed : ''
-      const isSelect = Object.prototype.hasOwnProperty.call(SELECT_OPTIONS, prop)
-      const options = isSelect
-        ? SELECT_OPTIONS[prop as keyof typeof SELECT_OPTIONS]
-        : undefined
-      const control = isSelect
-        ? `<select class="qwikcss-card-select" data-prop="${prop}">
-            ${renderSelectOptions(options || [], value)}
-          </select>`
-        : `<input class="qwikcss-card-input" type="text" data-prop="${prop}" value="${escapeHtml(
-            value || ''
-          )}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ''} />`
-      const overridden = selector ? hasInlineDecl(selector, prop) : false
-      return `
-        <div class="qwikcss-card-edit-row${overridden ? ' is-overridden' : ''}" data-prop="${prop}">
-          <span class="label">${escapeHtml(prop)}</span>
-          ${control}
-          <button class="qwikcss-card-reset" type="button" data-action="reset-prop" data-prop="${prop}"${
-            overridden ? '' : ' disabled'
-          }>Reset</button>
-        </div>
-      `
-    })
-    .join('')
+  geom.innerHTML = GEOM_FIELDS.map((field) => {
+    let value = ''
+    let overridden = false
+    if (field.kind === 'transform') {
+      overridden = transformOverridden
+      if (field.key === 'x') value = transform.x
+      if (field.key === 'y') value = transform.y
+      if (field.key === 'rotate') value = transform.r
+    } else if (field.prop) {
+      const raw = overrides[field.prop] ?? cs.getPropertyValue(field.prop).trim()
+      value = normalizeComputedValue(raw)
+      overridden = selector ? hasInlineDecl(selector, field.prop) : false
+    }
+
+    const dataAttr =
+      field.kind === 'transform' ? `data-field="${field.key}"` : `data-prop="${field.prop}"`
+    return `
+      <div class="qwikcss-card-field${overridden ? ' is-overridden' : ''}">
+        <span class="label">${escapeHtml(field.label)}</span>
+        <input class="qwikcss-card-input" type="text" ${dataAttr} data-scrub="true" data-unit="${
+          field.unit
+        }" value="${escapeHtml(value)}" />
+      </div>
+    `
+  }).join('')
 
   updateResetAllButton(selector)
 }
 
-function updateRowState(row: Element | null, overridden: boolean) {
-  if (!row) return
-  row.classList.toggle('is-overridden', overridden)
-  const resetBtn = row.querySelector<HTMLButtonElement>('[data-action="reset-prop"]')
-  if (resetBtn) resetBtn.disabled = !overridden
+function updateFieldState(field: Element | null, overridden: boolean) {
+  if (!field) return
+  field.classList.toggle('is-overridden', overridden)
+}
+
+function applyPropValue(
+  selector: string,
+  prop: string,
+  raw: string,
+  input: HTMLInputElement,
+  commit: boolean
+) {
+  const value = raw.trim()
+  if (!value) {
+    removeInlineDecl(selector, prop)
+    updateFieldState(input.closest('.qwikcss-card-field'), false)
+    updateResetAllButton(selector)
+    queueOverlayUpdate()
+    return
+  }
+
+  const normalized = normalizeInlineValue(prop, value)
+  if (commit && normalized && normalized !== value) input.value = normalized
+  applyInlineDecl(selector, prop, normalized)
+  updateFieldState(input.closest('.qwikcss-card-field'), true)
+  updateResetAllButton(selector)
+  queueOverlayUpdate()
+}
+
+function applyTransformValue(
+  selector: string,
+  field: 'x' | 'y' | 'rotate',
+  raw: string,
+  input: HTMLInputElement,
+  commit: boolean
+) {
+  const normalized = normalizeTransformValue(field, raw)
+  if (commit && normalized !== raw) input.value = normalized
+  const parts = getTransformParts(selector, state.currentElement)
+  if (field === 'x') parts.x = normalized
+  if (field === 'y') parts.y = normalized
+  if (field === 'rotate') parts.r = normalized
+  setTransformParts(selector, parts)
+  updateFieldState(input.closest('.qwikcss-card-field'), true)
+  updateResetAllButton(selector)
+  queueOverlayUpdate()
+}
+
+type ScrubState = {
+  input: HTMLInputElement
+  selector: string
+  prop?: string
+  field?: 'x' | 'y' | 'rotate'
+  startX: number
+  startValue: number
+  unit: string
+  active: boolean
+}
+
+let scrubState: ScrubState | null = null
+
+function parseScrubValue(raw: string, fallbackUnit: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return { value: 0, unit: fallbackUnit || 'px' }
+  const match = trimmed.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i)
+  if (!match) return null
+  const unit = match[2] || fallbackUnit
+  if (!unit) return null
+  return { value: Number(match[1]), unit }
+}
+
+function handleScrubStart(ev: MouseEvent) {
+  if (!state.cardEditing) return
+  if (ev.button !== 0) return
+  const target = ev.target
+  if (!(target instanceof HTMLInputElement)) return
+  if (!target.dataset.scrub) return
+  const selector = state.currentSelector
+  if (!selector) return
+  const field = target.getAttribute('data-field') as 'x' | 'y' | 'rotate' | null
+  const prop = target.getAttribute('data-prop')
+  if (!field && !prop) return
+  const parsed = parseScrubValue(target.value, target.dataset.unit || '')
+  if (!parsed) return
+
+  scrubState = {
+    input: target,
+    selector,
+    prop: prop || undefined,
+    field: field || undefined,
+    startX: ev.clientX,
+    startValue: parsed.value,
+    unit: parsed.unit,
+    active: false,
+  }
+
+  document.addEventListener('mousemove', handleScrubMove, true)
+  document.addEventListener('mouseup', handleScrubEnd, true)
+}
+
+function handleScrubMove(ev: MouseEvent) {
+  if (!scrubState) return
+  const delta = ev.clientX - scrubState.startX
+  if (!scrubState.active) {
+    if (Math.abs(delta) < 3) return
+    scrubState.active = true
+  }
+
+  const step = ev.altKey ? 0.1 : ev.shiftKey ? 10 : 1
+  const next = scrubState.startValue + delta * step
+  const nextValue = `${formatNumber(next)}${scrubState.unit}`
+  scrubState.input.value = nextValue
+
+  if (scrubState.field) {
+    applyTransformValue(scrubState.selector, scrubState.field, nextValue, scrubState.input, false)
+  } else if (scrubState.prop) {
+    applyPropValue(scrubState.selector, scrubState.prop, nextValue, scrubState.input, false)
+  }
+  ev.preventDefault()
+}
+
+function handleScrubEnd(ev: MouseEvent) {
+  if (!scrubState) return
+  if (scrubState.active) ev.preventDefault()
+  stopScrub()
+}
+
+function stopScrub() {
+  document.removeEventListener('mousemove', handleScrubMove, true)
+  document.removeEventListener('mouseup', handleScrubEnd, true)
+  scrubState = null
 }
 
 function handleCardInput(ev: Event) {
   if (!state.cardEditing) return
   const target = ev.target
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return
+  if (target instanceof HTMLSelectElement) return
   const prop = target.getAttribute('data-prop')
-  if (!prop) return
+  const field = target.getAttribute('data-field') as 'x' | 'y' | 'rotate' | null
   const selector = state.currentSelector
   if (!selector) return
-  const raw = target.value.trim()
+  const raw = target.value
+  const commit = ev.type === 'change'
 
-  if (!raw) {
-    removeInlineDecl(selector, prop)
-    updateRowState(target.closest('.qwikcss-card-edit-row'), false)
-    updateResetAllButton(selector)
-    queueOverlayUpdate()
+  if (field) {
+    applyTransformValue(selector, field, raw, target, commit)
     return
   }
-
-  const normalized = normalizeInlineValue(prop, raw)
-  if (ev.type === 'change' && normalized && normalized !== raw) target.value = normalized
-  applyInlineDecl(selector, prop, normalized)
-  updateRowState(target.closest('.qwikcss-card-edit-row'), true)
-  updateResetAllButton(selector)
-  queueOverlayUpdate()
-
-  if (prop === 'display' && ev.type === 'change' && state.currentElement) {
-    updateHoverCard(state.currentElement)
-  }
+  if (!prop) return
+  applyPropValue(selector, prop, raw, target, commit)
 }
 
 function handleCardClick(ev: MouseEvent) {
@@ -637,14 +882,7 @@ function handleCardClick(ev: MouseEvent) {
       const selector = state.currentSelector
       if (!selector) return
       clearInlineSelector(selector)
-      if (state.currentElement) updateHoverCard(state.currentElement)
-      return
-    }
-    if (action === 'reset-prop') {
-      const selector = state.currentSelector
-      const prop = actionEl.getAttribute('data-prop')
-      if (!selector || !prop) return
-      removeInlineDecl(selector, prop)
+      delete transformStore[selector]
       if (state.currentElement) updateHoverCard(state.currentElement)
       return
     }
@@ -681,6 +919,7 @@ function enterEdit(el: Element) {
 
 function exitEdit(opts: { hide?: boolean } = {}) {
   if (!state.cardEditing) return
+  stopScrub()
   state.cardEditing = false
   stopPinnedCheck()
   setPaused(false)
@@ -794,7 +1033,7 @@ export function updateHoverCard(el: Element) {
     props.innerHTML = rows.join('')
   }
 
-  if (state.cardEditing) renderEditProps(activeEl, cs)
+  if (state.cardEditing) renderEditPanel(activeEl, cs)
 
   if (!state.cardPinned && !state.dragging && !state.cardEditing) {
     setCardPos(rect.right + 10, rect.top)
