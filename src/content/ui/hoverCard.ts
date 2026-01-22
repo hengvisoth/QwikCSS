@@ -82,6 +82,27 @@ const FONT_WEIGHT_OPTIONS = [
   'bold',
 ]
 
+const BACKGROUND_PRESETS = [
+  { label: 'Aqua Fade', value: 'linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%)' },
+  { label: 'Mint Breeze', value: 'linear-gradient(135deg, #34d399 0%, #22d3ee 100%)' },
+  { label: 'Sunset', value: 'linear-gradient(135deg, #f97316 0%, #f43f5e 100%)' },
+  { label: 'Citrus', value: 'linear-gradient(135deg, #facc15 0%, #f97316 100%)' },
+  { label: 'Lime', value: 'linear-gradient(135deg, #84cc16 0%, #22c55e 100%)' },
+  {
+    label: 'Ocean',
+    value: 'linear-gradient(135deg, #0ea5e9 0%, #22d3ee 50%, #14b8a6 100%)',
+  },
+  { label: 'Iris', value: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' },
+  { label: 'Rose', value: 'linear-gradient(135deg, #fb7185 0%, #f472b6 100%)' },
+  { label: 'Steel', value: 'linear-gradient(135deg, #94a3b8 0%, #1f2937 100%)' },
+  { label: 'Carbon', value: 'linear-gradient(135deg, #111827 0%, #374151 100%)' },
+  { label: 'Peach', value: 'linear-gradient(135deg, #fda4af 0%, #f97316 100%)' },
+  {
+    label: 'Lagoon',
+    value: 'radial-gradient(circle at 20% 20%, #22d3ee 0%, #0ea5e9 45%, #0f172a 100%)',
+  },
+]
+
 function ensureHoverCard() {
   if (document.getElementById(CARD_ID)) return
 
@@ -230,6 +251,10 @@ function normalizeComputedValue(value: string) {
   return `${formatNumber(Number(match[1]))}${match[2] || ''}`
 }
 
+function normalizeCssValue(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
 function getUnitFromValue(value: string, fallback = 'px') {
   const trimmed = value.trim()
   const match = trimmed.match(/^-?\d+(?:\.\d+)?([a-z%]*)$/i)
@@ -372,17 +397,35 @@ function updateResetAllButton(selector: string | null) {
 
 function findFieldContainer(input: HTMLElement) {
   return input.closest(
-    '.qwikcss-card-field, .qwikcss-spacing-cell, .qwikcss-spacing-pad-cell, .qwikcss-typography-field'
+    '.qwikcss-card-field, .qwikcss-spacing-cell, .qwikcss-spacing-pad-cell, .qwikcss-typography-field, .qwikcss-background-field'
   )
+}
+
+function getComputedPropValue(
+  el: Element | null,
+  cs: CSSStyleDeclaration,
+  prop: string
+) {
+  const raw = cs.getPropertyValue(prop).trim()
+  if (!el) return raw
+  const map = (el as Element & { computedStyleMap?: () => Map<string, unknown> })
+    .computedStyleMap?.()
+  if (!map) return raw
+  const styleValue = map.get(prop)
+  if (!styleValue) return raw
+  const keyword = (styleValue as { value?: unknown }).value
+  if (typeof keyword === 'string') return keyword
+  return raw
 }
 
 function getPropMeta(
   prop: string,
+  el: Element | null,
   cs: CSSStyleDeclaration,
   overrides: Record<string, string>,
   selector: string | null
 ) {
-  const computedRaw = cs.getPropertyValue(prop).trim()
+  const computedRaw = getComputedPropValue(el, cs, prop)
   const overrideRaw = selector ? overrides[prop] : undefined
   const value = normalizeComputedValue(overrideRaw ?? computedRaw)
   const placeholder = overrideRaw ? normalizeComputedValue(computedRaw) : ''
@@ -392,6 +435,7 @@ function getPropMeta(
 }
 
 function renderSpacingPanel(
+  el: Element,
   cs: CSSStyleDeclaration,
   overrides: Record<string, string>,
   selector: string | null
@@ -399,14 +443,14 @@ function renderSpacingPanel(
   const spacing = document.getElementById('__qwikcss_card_spacing__')
   if (!spacing) return
 
-  const mt = getPropMeta('margin-top', cs, overrides, selector)
-  const mr = getPropMeta('margin-right', cs, overrides, selector)
-  const mb = getPropMeta('margin-bottom', cs, overrides, selector)
-  const ml = getPropMeta('margin-left', cs, overrides, selector)
-  const pt = getPropMeta('padding-top', cs, overrides, selector)
-  const pr = getPropMeta('padding-right', cs, overrides, selector)
-  const pb = getPropMeta('padding-bottom', cs, overrides, selector)
-  const pl = getPropMeta('padding-left', cs, overrides, selector)
+  const mt = getPropMeta('margin-top', el, cs, overrides, selector)
+  const mr = getPropMeta('margin-right', el, cs, overrides, selector)
+  const mb = getPropMeta('margin-bottom', el, cs, overrides, selector)
+  const ml = getPropMeta('margin-left', el, cs, overrides, selector)
+  const pt = getPropMeta('padding-top', el, cs, overrides, selector)
+  const pr = getPropMeta('padding-right', el, cs, overrides, selector)
+  const pb = getPropMeta('padding-bottom', el, cs, overrides, selector)
+  const pl = getPropMeta('padding-left', el, cs, overrides, selector)
 
   const input = (meta: ReturnType<typeof getPropMeta>, prop: string) => {
     const placeholder = meta.placeholder ? ` placeholder="${escapeHtml(meta.placeholder)}"` : ''
@@ -466,6 +510,7 @@ function renderSpacingPanel(
 }
 
 function renderTypographyPanel(
+  el: Element,
   cs: CSSStyleDeclaration,
   overrides: Record<string, string>,
   selector: string | null
@@ -476,9 +521,9 @@ function renderTypographyPanel(
   const fontFamilyRaw = overrides['font-family'] ?? cs.getPropertyValue('font-family').trim()
   const fontWeightRaw = overrides['font-weight'] ?? cs.getPropertyValue('font-weight').trim()
   const fontWeightValue = normalizeComputedValue(fontWeightRaw)
-  const fontSize = getPropMeta('font-size', cs, overrides, selector)
-  const lineHeight = getPropMeta('line-height', cs, overrides, selector)
-  const letterSpacing = getPropMeta('letter-spacing', cs, overrides, selector)
+  const fontSize = getPropMeta('font-size', el, cs, overrides, selector)
+  const lineHeight = getPropMeta('line-height', el, cs, overrides, selector)
+  const letterSpacing = getPropMeta('letter-spacing', el, cs, overrides, selector)
   const colorRaw = overrides.color ?? cs.getPropertyValue('color').trim()
   const colorHex = normalizeColorValue(colorRaw)
   const colorText = colorHex || colorRaw || '#ffffff'
@@ -584,6 +629,66 @@ function renderTypographyPanel(
   `
 }
 
+function renderBackgroundPanel(
+  el: Element,
+  cs: CSSStyleDeclaration,
+  overrides: Record<string, string>,
+  selector: string | null
+) {
+  const panel = document.getElementById('__qwikcss_card_background__')
+  if (!panel) return
+
+  const computedColor = getComputedPropValue(el, cs, 'background-color')
+  const overrideColor = selector ? overrides['background-color'] : undefined
+  const colorRaw = overrideColor ?? computedColor
+  const colorHex = normalizeColorValue(colorRaw)
+  const colorText = colorHex || colorRaw || '#000000'
+  const placeholder = overrideColor ? ` placeholder="${escapeHtml(computedColor)}"` : ''
+  const colorOverridden = selector ? hasInlineDecl(selector, 'background-color') : false
+
+  const gradientOverride = selector ? overrides['background-image'] : undefined
+  const gradientNormalized = gradientOverride ? normalizeCssValue(gradientOverride) : null
+  const gradientOverridden = selector ? hasInlineDecl(selector, 'background-image') : false
+
+  const presets = BACKGROUND_PRESETS.map((preset) => {
+    const normalized = normalizeCssValue(preset.value)
+    const isActive = gradientNormalized === normalized
+    const activeClass = isActive
+      ? ' qc-ring-2 qc-ring-emerald-300/80 qc-ring-offset-2 qc-ring-offset-black/40'
+      : ''
+    return `<button class="qwikcss-bg-preset qc-h-8 qc-w-8 qc-rounded-full qc-border qc-border-white/20 qc-shadow-sm qc-transition hover:qc-border-white/50 qc-bg-cover qc-bg-center${activeClass}" type="button" data-action="apply-gradient" data-value="${escapeHtml(
+      preset.value
+    )}" title="${escapeHtml(preset.label)}" style="background-image:${escapeHtml(
+      preset.value
+    )};"></button>`
+  }).join('')
+
+  panel.innerHTML = `
+    <div class="qc-flex qc-items-center qc-justify-between">
+      <span class="qc-text-[11px] qc-uppercase qc-tracking-[0.2em] qc-text-[color:var(--qc-muted)]">Color</span>
+    </div>
+    <div class="qwikcss-background-field qc-flex qc-items-center qc-gap-2 qc-rounded-lg qc-border qc-border-white/10 qc-bg-white/5 qc-px-2 qc-py-1.5${
+      colorOverridden ? ' is-overridden' : ''
+    }">
+      <input class="qc-h-6 qc-w-6 qc-shrink-0 qc-rounded-full qc-border qc-border-white/20 qc-bg-transparent qc-p-0" type="color" data-prop="background-color" value="${escapeHtml(
+        colorHex || '#000000'
+      )}" />
+      <input class="qc-w-full qc-bg-transparent qc-text-[12px] qc-font-semibold qc-text-white/90 qc-outline-none" type="text" data-prop="background-color" value="${escapeHtml(
+        colorText
+      )}"${placeholder} />
+    </div>
+    <div class="qc-flex qc-items-center qc-justify-between qc-pt-1">
+      <span class="qc-text-[11px] qc-uppercase qc-tracking-[0.2em] qc-text-[color:var(--qc-muted)]">Presets</span>
+      <button class="qc-text-[10px] qc-uppercase qc-tracking-[0.2em] qc-text-[color:var(--qc-muted)] qc-transition hover:qc-text-white/80 disabled:qc-cursor-not-allowed disabled:qc-opacity-40" type="button" data-action="clear-gradient"${
+        gradientOverridden ? '' : ' disabled'
+      }>Clear</button>
+    </div>
+    <div class="qwikcss-background-grid qc-grid qc-grid-cols-6 qc-gap-2">
+      ${presets}
+    </div>
+  `
+}
+
 function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
   const geom = document.getElementById('__qwikcss_card_geom__')
   if (!geom) return
@@ -623,8 +728,9 @@ function renderEditPanel(el: Element, cs: CSSStyleDeclaration) {
     `
   }).join('')
 
-  renderSpacingPanel(cs, overrides, selector)
-  renderTypographyPanel(cs, overrides, selector)
+  renderSpacingPanel(el, cs, overrides, selector)
+  renderTypographyPanel(el, cs, overrides, selector)
+  renderBackgroundPanel(el, cs, overrides, selector)
   updateResetAllButton(selector)
 }
 
@@ -779,15 +885,19 @@ function handleCardInput(ev: Event) {
     return
   }
   if (!prop) return
-  if (target instanceof HTMLInputElement && prop === 'color') {
-    const container = target.closest('.qwikcss-typography-color')
+  if (target instanceof HTMLInputElement && (prop === 'color' || prop === 'background-color')) {
+    const container = target.closest('.qwikcss-typography-color, .qwikcss-background-field')
     if (container) {
       if (target.type === 'color') {
-        const textInput = container.querySelector<HTMLInputElement>('input[type="text"][data-prop="color"]')
+        const textInput = container.querySelector<HTMLInputElement>(
+          `input[type="text"][data-prop="${prop}"]`
+        )
         if (textInput) textInput.value = target.value
       } else {
         const colorValue = normalizeColorValue(target.value)
-        const colorInput = container.querySelector<HTMLInputElement>('input[type="color"][data-prop="color"]')
+        const colorInput = container.querySelector<HTMLInputElement>(
+          `input[type="color"][data-prop="${prop}"]`
+        )
         if (colorInput && colorValue) colorInput.value = colorValue
       }
     }
@@ -809,6 +919,23 @@ function handleCardClick(ev: MouseEvent) {
       clearInlineSelector(selector)
       delete transformStore[selector]
       if (state.currentElement) updateHoverCard(state.currentElement)
+      return
+    }
+    if (action === 'apply-gradient') {
+      const selector = state.currentSelector
+      const value = actionEl.getAttribute('data-value')
+      if (!selector || !value) return
+      applyInlineDecl(selector, 'background-image', value)
+      const el = state.currentElement || state.lastHover
+      if (el) updateHoverCard(el)
+      return
+    }
+    if (action === 'clear-gradient') {
+      const selector = state.currentSelector
+      if (!selector) return
+      removeInlineDecl(selector, 'background-image')
+      const el = state.currentElement || state.lastHover
+      if (el) updateHoverCard(el)
       return
     }
   }

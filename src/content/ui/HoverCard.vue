@@ -28,8 +28,8 @@
         <span id="__qwikcss_card_font__">&mdash;</span>
       </div>
     </div>
-    <div class="qwikcss-card-props qc-flex qc-max-h-[260px] qc-flex-col qc-gap-2 qc-overflow-auto qc-pr-1" id="__qwikcss_card_props__"></div>
-    <div class="qwikcss-card-edit qc-hidden qc-max-h-[360px] qc-flex-col qc-gap-3 qc-overflow-y-auto qc-pr-1" id="__qwikcss_card_edit__">
+    <div class="qwikcss-card-props qc-flex qc-max-h-[260px] qc-flex-col qc-gap-2 qc-overflow-y-auto qc-overflow-x-hidden qc-pr-1" id="__qwikcss_card_props__"></div>
+    <div class="qwikcss-card-edit qc-hidden qc-max-h-[360px] qc-flex-col qc-gap-3 qc-overflow-y-auto qc-overflow-x-hidden qc-pr-1" id="__qwikcss_card_edit__">
       <div class="qwikcss-card-tabs qc-flex qc-items-center qc-gap-3 qc-border-b qc-border-white/10 qc-pb-2">
         <button class="qwikcss-card-tab is-active qc-relative qc-border-0 qc-bg-transparent qc-pb-1.5 qc-text-[12px] qc-text-[color:var(--qc-muted)] qc-transition qc-duration-150" type="button">Design</button>
         <button class="qwikcss-card-tab qc-relative qc-border-0 qc-bg-transparent qc-pb-1.5 qc-text-[12px] qc-text-[color:var(--qc-muted)] qc-transition qc-duration-150" type="button">Code</button>
@@ -62,9 +62,12 @@
         <div class="qwikcss-card-section-panel qc-hidden qc-py-2" data-section="typography">
           <div class="qwikcss-card-typography qc-flex qc-flex-col qc-gap-2" id="__qwikcss_card_typography__"></div>
         </div>
-        <button class="qwikcss-card-section qc-flex qc-w-full qc-items-center qc-justify-between qc-gap-2 qc-border-b qc-border-white/10 qc-bg-transparent qc-px-1 qc-py-2.5 qc-text-[12px] qc-text-emerald-200/70 qc-transition hover:qc-text-emerald-200" type="button">
+        <button class="qwikcss-card-section qc-flex qc-w-full qc-items-center qc-justify-between qc-gap-2 qc-border-b qc-border-white/10 qc-bg-transparent qc-px-1 qc-py-2.5 qc-text-[12px] qc-text-emerald-200/70 qc-transition hover:qc-text-emerald-200" type="button" data-section="background">
           Background <span class="chev qc-text-[color:var(--qc-muted)] qc-transition">></span>
         </button>
+        <div class="qwikcss-card-section-panel qc-hidden qc-py-2" data-section="background">
+          <div class="qwikcss-card-background qc-flex qc-flex-col qc-gap-2" id="__qwikcss_card_background__"></div>
+        </div>
         <button class="qwikcss-card-section qc-flex qc-w-full qc-items-center qc-justify-between qc-gap-2 qc-border-b qc-border-white/10 qc-bg-transparent qc-px-1 qc-py-2.5 qc-text-[12px] qc-text-emerald-200/70 qc-transition hover:qc-text-emerald-200" type="button">
           Display <span class="chev qc-text-[color:var(--qc-muted)] qc-transition">></span>
         </button>

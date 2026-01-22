@@ -108,7 +108,9 @@
 #__qwikcss_hovercard__[data-section-open='spacing']
   .qwikcss-card-section-panel[data-section='spacing'],
 #__qwikcss_hovercard__[data-section-open='typography']
-  .qwikcss-card-section-panel[data-section='typography'] {
+  .qwikcss-card-section-panel[data-section='typography'],
+#__qwikcss_hovercard__[data-section-open='background']
+  .qwikcss-card-section-panel[data-section='background'] {
   display: block;
 }
 
@@ -126,7 +128,8 @@
 #__qwikcss_hovercard__ .qwikcss-card-field.is-overridden,
 #__qwikcss_hovercard__ .qwikcss-spacing-cell.is-overridden,
 #__qwikcss_hovercard__ .qwikcss-spacing-pad-cell.is-overridden,
-#__qwikcss_hovercard__ .qwikcss-typography-field.is-overridden {
+#__qwikcss_hovercard__ .qwikcss-typography-field.is-overridden,
+#__qwikcss_hovercard__ .qwikcss-background-field.is-overridden {
   border-color: rgba(124, 255, 173, 0.5);
   background: rgba(124, 255, 173, 0.12);
 }
